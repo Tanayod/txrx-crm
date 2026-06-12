@@ -1,0 +1,188 @@
+'use client'
+
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '../components/useAuth'
+import Sidebar from '../components/Sidebar'
+import { IconPrinter } from '@tabler/icons-react'
+
+export default function Invoices() {
+  const { user, role, ready, logout } = useAuth('/invoices')
+  const [bookings, setBookings] = useState<any[]>([])
+  const [selected, setSelected] = useState<any>(null)
+  const [showInvoice, setShowInvoice] = useState(false)
+  const [pricePerHead, setPricePerHead] = useState(0)
+  const [loaded, setLoaded] = useState(false)
+
+  if (ready && !loaded) { fetchBookings(); setLoaded(true) }
+
+  async function fetchBookings() {
+    const { data } = await supabase
+      .from('bookings')
+      .select('*, customers(customer_name, type), medical_cases(*), payments(*)')
+      .order('booking_date', { ascending: false })
+    if (data) setBookings(data)
+  }
+
+  const handleOpenInvoice = (booking: any) => {
+    setSelected(booking)
+    const p = booking.payments?.[0]
+    const mc = booking.medical_cases?.[0]
+    const count = mc?.actual_count || booking.booked_count || 0
+    const total = p?.amount_received || 0
+    setPricePerHead(count > 0 ? Math.round(total / count) : 0)
+    setShowInvoice(true)
+  }
+
+  const getInvoiceNo = (booking: any) => {
+    const p = booking.payments?.[0]
+    return p?.invoice_no || `INV-${booking.case_number}`
+  }
+
+  const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+  const actualCount = selected?.medical_cases?.[0]?.actual_count || selected?.booked_count || 0
+  const total = actualCount * pricePerHead
+  const paid = selected?.payments?.[0]?.amount_received || 0
+  const remaining = total - paid
+
+  if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+
+  return (
+    <div className="flex min-h-screen bg-[#F1F5F9]">
+      <Sidebar user={user} role={role} currentPath="/invoices" onLogout={logout} />
+
+      <div className="flex-1 ml-56 p-6 print:hidden">
+        <div className="mb-6">
+          <p className="text-base font-medium text-gray-800">ใบวางบิล</p>
+          <p className="text-xs text-gray-400 mt-0.5">ออกใบวางบิลแต่ละ Order</p>
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+          <div className="grid grid-cols-5 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+            <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span><span>ยอดรับ</span><span></span>
+          </div>
+          {bookings.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">ยังไม่มีรายการ</div>
+          ) : (
+            bookings.map((b) => {
+              const p = b.payments?.[0]
+              return (
+                <div key={b.id} className="grid grid-cols-5 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+                  <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
+                  <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
+                  <span className="text-gray-500">{b.booking_date}</span>
+                  <span className="text-gray-700">{p?.amount_received ? `฿${p.amount_received.toLocaleString()}` : '-'}</span>
+                  <button onClick={() => handleOpenInvoice(b)} className="flex items-center gap-1.5 text-xs text-[#185FA5] hover:underline justify-end">
+                    <IconPrinter size={13} /> ออกใบวางบิล
+                  </button>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      {showInvoice && selected && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 print:bg-white print:block">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto print:shadow-none print:rounded-none print:max-h-none">
+            <div className="p-10">
+
+              <div className="flex justify-between items-start pb-6 border-b-2 border-[#185FA5] mb-8">
+                <div>
+                  <p className="text-2xl font-medium text-[#185FA5]">Txrx Service</p>
+                  <p className="text-xs text-gray-400 mt-1">บริการตรวจสุขภาพแรงงานต่างด้าว</p>
+                </div>
+                <div className="text-right">
+                  <div className="bg-[#185FA5] text-white px-4 py-1.5 rounded-lg mb-2 inline-block">
+                    <p className="text-sm font-medium">ใบวางบิล</p>
+                  </div>
+                  <p className="text-xs font-medium text-gray-600">{getInvoiceNo(selected)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{today}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 mb-8">
+                <div className="flex-1 bg-[#E6F1FB] rounded-xl p-4">
+                  <p className="text-xs font-medium text-[#185FA5] mb-2">เรียกเก็บจาก</p>
+                  <p className="font-medium text-gray-800">{selected.customers?.customer_name}</p>
+                  {selected.customers?.type === 'credit' && (
+                    <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full mt-1 inline-block">เครดิต</span>
+                  )}
+                </div>
+                <div className="flex-1 bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs font-medium text-gray-500 mb-2">รายละเอียด</p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">เลขที่จอง</span>
+                      <span className="text-gray-700 font-mono">{selected.case_number}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">วันที่ตรวจ</span>
+                      <span className="text-gray-700">{selected.booking_date}</span>
+                    </div>
+                    {selected.location_name && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">สถานที่</span>
+                        <span className="text-gray-700">{selected.location_name}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl overflow-hidden border border-gray-100 mb-6">
+                <div className="grid grid-cols-4 px-4 py-3 bg-[#185FA5] text-white text-xs font-medium">
+                  <span className="col-span-2">รายการ</span>
+                  <span className="text-center">ราคา/คน (บาท)</span>
+                  <span className="text-right">รวม</span>
+                </div>
+                <div className="grid grid-cols-4 px-4 py-4 text-sm items-center">
+                  <div className="col-span-2">
+                    <p className="font-medium text-gray-800">ตรวจสุขภาพแรงงานต่างด้าว</p>
+                    <p className="text-xs text-gray-400 mt-0.5">จำนวน {actualCount.toLocaleString()} คน</p>
+                  </div>
+                  <div className="flex justify-center">
+                    <input type="text" inputMode="numeric"
+                      value={pricePerHead || ''}
+                      onChange={(e) => setPricePerHead(Number(e.target.value.replace(/\D/g,'')))}
+                      className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-[#185FA5]"
+                      placeholder="0" />
+                  </div>
+                  <p className="text-right font-medium text-gray-800">฿{total.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-8">
+                <div className="w-72 bg-gray-50 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>ยอดรวมทั้งหมด</span>
+                    <span>฿{total.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>ยอดรับชำระแล้ว</span>
+                    <span className="text-green-600">฿{paid.toLocaleString()}</span>
+                  </div>
+                  <div className="border-t border-gray-200 pt-2 flex justify-between font-medium text-base">
+                    <span className="text-gray-800">ยอดคงค้าง</span>
+                    <span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{remaining.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 flex justify-between items-center print:hidden">
+                <p className="text-xs text-gray-400">ขอบคุณที่ใช้บริการ Txrx Service</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowInvoice(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
+                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C]">
+                    <IconPrinter size={15} /> พิมพ์ / PDF
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
