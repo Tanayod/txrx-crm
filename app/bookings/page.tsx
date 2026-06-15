@@ -43,6 +43,11 @@ export default function Bookings() {
   const [filterService, setFilterService] = useState('')
   const [filterLocation, setFilterLocation] = useState('')
   const [filterPayment, setFilterPayment] = useState('')
+  const [filterBookedMin, setFilterBookedMin] = useState('')
+  const [filterBookedMax, setFilterBookedMax] = useState('')
+  const [filterActualMin, setFilterActualMin] = useState('')
+  const [filterActualMax, setFilterActualMax] = useState('')
+  const [filterHasActual, setFilterHasActual] = useState('')
 
   if (ready && !loaded) { fetchAll(); setLoaded(true) }
 
@@ -140,6 +145,7 @@ export default function Bookings() {
   )
 
   const filtered = bookings.filter(b => {
+    const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
     if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search) && !b.location_name?.includes(search)) return false
     if (filterDateFrom && b.booking_date < filterDateFrom) return false
     if (filterDateTo && b.booking_date > filterDateTo) return false
@@ -147,6 +153,12 @@ export default function Bookings() {
     if (filterService && b.service_type !== filterService) return false
     if (filterLocation && b.location_name !== filterLocation) return false
     if (filterPayment && getPaymentStatus(b).label !== filterPayment) return false
+    if (filterBookedMin && b.booked_count < Number(filterBookedMin)) return false
+    if (filterBookedMax && b.booked_count > Number(filterBookedMax)) return false
+    if (filterActualMin && (mc?.actual_count ?? -1) < Number(filterActualMin)) return false
+    if (filterActualMax && (mc?.actual_count ?? 99999) > Number(filterActualMax)) return false
+    if (filterHasActual === 'มี' && !(mc?.actual_count > 0)) return false
+    if (filterHasActual === 'ไม่มี' && mc?.actual_count > 0) return false
     return true
   })
 
@@ -175,6 +187,13 @@ export default function Bookings() {
     XLSX.writeFile(wb, `bookings_${new Date().toISOString().slice(0,10)}.xlsx`)
   }
 
+  const clearFilters = () => {
+    setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterShift('')
+    setFilterService(''); setFilterLocation(''); setFilterPayment('')
+    setFilterBookedMin(''); setFilterBookedMax('')
+    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
+  }
+
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
@@ -197,7 +216,6 @@ export default function Bookings() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="relative mb-3">
             <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
@@ -205,7 +223,7 @@ export default function Bookings() {
               value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
@@ -251,14 +269,43 @@ export default function Bookings() {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
+              <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
+              <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
+              <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">มีแล้ว</option>
+                <option value="ไม่มี">ยังไม่มี</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
+              <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
+              <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+          </div>
           <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
-            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterShift(''); setFilterService(''); setFilterLocation(''); setFilterPayment('') }}
-              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
-        {/* Table */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
           <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span className="col-span-2">ลูกค้า</span><span>วันที่</span>
@@ -306,7 +353,6 @@ export default function Bookings() {
         </div>
       </div>
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -314,8 +360,6 @@ export default function Bookings() {
               <p className="text-base font-semibold text-gray-800">{editingId ? 'แก้ไขรายการจอง' : 'จองคิวใหม่'}</p>
             </div>
             <div className="p-6 space-y-4">
-
-              {/* ลูกค้า */}
               <div className="relative">
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ลูกค้า *</label>
                 <input value={form.customer_name_display || customerSearch}
@@ -335,7 +379,6 @@ export default function Bookings() {
                   </div>
                 )}
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วันที่ตรวจ *</label>
@@ -350,7 +393,6 @@ export default function Bookings() {
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ประเภทบริการ</label>
                 <select value={form.service_type} onChange={(e) => setForm({...form, service_type: e.target.value})}
@@ -359,7 +401,6 @@ export default function Bookings() {
                   <option>คลินิก</option><option>Walk-in</option>
                 </select>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">จังหวัด</label>
@@ -378,7 +419,6 @@ export default function Bookings() {
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ชื่อสถานที่</label>
                 <select value={form.location_name} onChange={(e) => setForm({...form, location_name: e.target.value})}
@@ -387,14 +427,12 @@ export default function Bookings() {
                   {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ลิ้งค์ Google Map</label>
                 <input value={form.location_url} onChange={(e) => setForm({...form, location_url: e.target.value})}
                   placeholder="https://maps.app.goo.gl/..."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">เวลา</label>
@@ -410,7 +448,6 @@ export default function Bookings() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ซิมทรู</label>
                 <select value={form.sim_true_status} onChange={(e) => setForm({...form, sim_true_status: e.target.value})}
@@ -420,8 +457,6 @@ export default function Bookings() {
                   <option>ไม่อนุญาต</option><option>walk-in คลินิก</option>
                 </select>
               </div>
-
-              {/* ซิมที่ขาย */}
               <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
                 <p className="text-xs font-semibold text-purple-700 mb-3">📱 ซิมที่ขาย</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -442,14 +477,12 @@ export default function Bookings() {
                   </div>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
                 <textarea value={form.admin_note} onChange={(e) => setForm({...form, admin_note: e.target.value})} rows={2}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
             </div>
-
             <div className="p-6 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-sm text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">ยกเลิก</button>
               <button onClick={handleSave} disabled={saving}

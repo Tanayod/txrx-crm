@@ -18,11 +18,15 @@ export default function Medical() {
   const [form, setForm] = useState({ actual_count: 0, doctor_note: '', exam_date: '' })
   const [loaded, setLoaded] = useState(false)
 
-  // Filters
   const [search, setSearch] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterBookedMin, setFilterBookedMin] = useState('')
+  const [filterBookedMax, setFilterBookedMax] = useState('')
+  const [filterActualMin, setFilterActualMin] = useState('')
+  const [filterActualMax, setFilterActualMax] = useState('')
+  const [filterHasActual, setFilterHasActual] = useState('')
 
   if (ready && !loaded) { fetchCases(); setLoaded(true) }
 
@@ -49,7 +53,7 @@ export default function Medical() {
   }
 
   const handleSaveMedical = async () => {
-   const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
+    const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     const deadline = new Date(form.exam_date)
     deadline.setDate(deadline.getDate() + 3)
     const deadlineStr = deadline.toISOString().slice(0, 10)
@@ -65,7 +69,7 @@ export default function Medical() {
     const file = e.target.files[0]
     if (!file) return
     setUploading(true)
-    const mc = selected?.medical_cases?.[0]
+    const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบไฟล์'); setUploading(false); return }
     const fileName = `${mc.id}/${Date.now()}_${file.name}`
     const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
@@ -95,6 +99,12 @@ export default function Medical() {
     if (filterDateFrom && date < filterDateFrom) return false
     if (filterDateTo && date > filterDateTo) return false
     if (filterStatus && status.label !== filterStatus) return false
+    if (filterBookedMin && b.booked_count < Number(filterBookedMin)) return false
+    if (filterBookedMax && b.booked_count > Number(filterBookedMax)) return false
+    if (filterActualMin && (mc?.actual_count ?? -1) < Number(filterActualMin)) return false
+    if (filterActualMax && (mc?.actual_count ?? 99999) > Number(filterActualMax)) return false
+    if (filterHasActual === 'มี' && !(mc?.actual_count > 0)) return false
+    if (filterHasActual === 'ไม่มี' && mc?.actual_count > 0) return false
     return true
   })
 
@@ -118,6 +128,12 @@ export default function Medical() {
     XLSX.writeFile(wb, `medical_${new Date().toISOString().slice(0,10)}.xlsx`)
   }
 
+  const clearFilters = () => {
+    setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('')
+    setFilterBookedMin(''); setFilterBookedMax('')
+    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
+  }
+
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
@@ -134,7 +150,6 @@ export default function Medical() {
           </button>
         </div>
 
-        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
           <div className="relative">
             <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
@@ -165,10 +180,40 @@ export default function Medical() {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-3 pt-1 border-t border-gray-50">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
+              <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
+              <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
+              <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">มีแล้ว</option>
+                <option value="ไม่มี">ยังไม่มี</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
+              <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
+              <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+          </div>
           <div className="flex justify-between items-center pt-1">
             <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('') }}
-              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
@@ -188,7 +233,7 @@ export default function Medical() {
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                   <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
                   <span className="text-gray-500">{mc?.exam_date || b.booking_date}</span>
-                  <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() || '-'}</span></span>
+                  <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
                   <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${status.color}`}><status.icon size={11} />{status.label}</span></span>
                   <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right">บันทึก / แนบไฟล์</button>
                 </div>

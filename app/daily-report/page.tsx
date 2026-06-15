@@ -24,6 +24,11 @@ export default function DailyReport() {
   const [filterShift, setFilterShift] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterLocation, setFilterLocation] = useState('')
+  const [filterBookedMin, setFilterBookedMin] = useState('')
+  const [filterBookedMax, setFilterBookedMax] = useState('')
+  const [filterActualMin, setFilterActualMin] = useState('')
+  const [filterActualMax, setFilterActualMax] = useState('')
+  const [filterHasActual, setFilterHasActual] = useState('')
   const [locations, setLocations] = useState<any[]>([])
 
   if (ready && !loaded) { fetchReport(); fetchLocations(); setLoaded(true) }
@@ -57,18 +62,26 @@ export default function DailyReport() {
     setLoading(false)
   }
 
+  const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+
   const filtered = bookings.filter(b => {
+    const mc = getMc(b)
     if (filterCustomer && !b.customers?.customer_name?.includes(filterCustomer)) return false
     if (filterShift && b.shift !== filterShift) return false
     if (filterType && b.service_type !== filterType) return false
     if (filterLocation && b.location_name !== filterLocation) return false
+    if (filterBookedMin && b.booked_count < Number(filterBookedMin)) return false
+    if (filterBookedMax && b.booked_count > Number(filterBookedMax)) return false
+    if (filterActualMin && (mc?.actual_count ?? -1) < Number(filterActualMin)) return false
+    if (filterActualMax && (mc?.actual_count ?? 99999) > Number(filterActualMax)) return false
+    if (filterHasActual === 'มี' && !(mc?.actual_count > 0)) return false
+    if (filterHasActual === 'ไม่มี' && mc?.actual_count > 0) return false
     return true
   })
 
   const totalBooked = filtered.reduce((s,b) => s + (b.booked_count || 0), 0)
-  const totalActual = filtered.reduce((s,b) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0)
+  const totalActual = filtered.reduce((s,b) => s + (getMc(b)?.actual_count || 0), 0)
 
-  // Group by date
   const grouped: any = {}
   filtered.forEach(b => {
     const d = b.booking_date
@@ -85,13 +98,19 @@ export default function DailyReport() {
       'Type': b.service_type || '',
       'เวลา': b.exam_time || '',
       'ยอดจอง': b.booked_count || 0,
-      'ยอดตรวจจริง': (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count ?? '',
+      'ยอดตรวจจริง': getMc(b)?.actual_count ?? '',
       'สถานะเงิน': b.payments?.[0]?.payment_status || 'ยังไม่ชำระ',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Daily Report')
     XLSX.writeFile(wb, `daily_report_${dateFrom}_${dateTo}.xlsx`)
+  }
+
+  const clearFilters = () => {
+    setFilterCustomer(''); setFilterShift(''); setFilterType(''); setFilterLocation('')
+    setFilterBookedMin(''); setFilterBookedMax('')
+    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
@@ -111,7 +130,6 @@ export default function DailyReport() {
           </button>
         </div>
 
-        {/* Date range + filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="flex items-end gap-3 mb-3">
             <div>
@@ -141,7 +159,7 @@ export default function DailyReport() {
               }} className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">สัปดาห์นี้</button>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ชื่อลูกค้า</label>
               <input type="text" placeholder="ค้นหา..." value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)}
@@ -173,9 +191,43 @@ export default function DailyReport() {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
+              <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
+              <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
+              <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">มีแล้ว</option>
+                <option value="ไม่มี">ยังไม่มี</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
+              <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
+              <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+          </div>
+          <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
+            <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
+            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+          </div>
         </div>
 
-        {/* Summary Cards */}
         <div className="grid grid-cols-4 gap-3 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
             <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconCalendar size={11}/>ยอดจองวันนี้</p>
@@ -199,7 +251,6 @@ export default function DailyReport() {
           </div>
         </div>
 
-        {/* Table grouped by date */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
           <div className="grid grid-cols-9 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span className="col-span-2">ลูกค้า</span><span>กะ</span><span className="col-span-2">สถานที่</span>
@@ -207,9 +258,7 @@ export default function DailyReport() {
           </div>
 
           {loading ? (
-            <div className="p-12 text-center">
-              <p className="text-sm text-gray-400">กำลังโหลด...</p>
-            </div>
+            <div className="p-12 text-center"><p className="text-sm text-gray-400">กำลังโหลด...</p></div>
           ) : Object.keys(grouped).length === 0 ? (
             <div className="p-12 text-center">
               <p className="text-gray-300 text-4xl mb-2">📅</p>
@@ -218,12 +267,11 @@ export default function DailyReport() {
           ) : Object.keys(grouped).sort().map(date => {
             const dayBookings = grouped[date]
             const dayBooked = dayBookings.reduce((s:number,b:any) => s + (b.booked_count || 0), 0)
-            const dayActual = dayBookings.reduce((s:number,b:any) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0)
+            const dayActual = dayBookings.reduce((s:number,b:any) => s + (getMc(b)?.actual_count || 0), 0)
             const isToday = date === today
             const isTomorrow = date === tomorrow
             return (
               <div key={date}>
-                {/* Date header */}
                 <div className={`px-5 py-2.5 flex justify-between items-center border-b border-gray-100 ${isToday ? 'bg-blue-50' : isTomorrow ? 'bg-amber-50' : 'bg-gray-50/50'}`}>
                   <div className="flex items-center gap-2">
                     <span className={`text-sm font-bold ${isToday ? 'text-[#185FA5]' : isTomorrow ? 'text-amber-600' : 'text-gray-700'}`}>
@@ -237,9 +285,8 @@ export default function DailyReport() {
                     <span className="text-xs text-gray-500">ตรวจจริง: <span className="font-bold text-emerald-600">{dayActual}</span></span>
                   </div>
                 </div>
-                {/* Rows */}
                 {dayBookings.map((b: any) => {
-                  const actual = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count
+                  const actual = getMc(b)?.actual_count
                   return (
                     <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-blue-50/20 transition-colors items-center">
                       <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>
@@ -260,7 +307,6 @@ export default function DailyReport() {
             )
           })}
 
-          {/* Total row */}
           {filtered.length > 0 && (
             <div className="grid grid-cols-9 gap-2 px-5 py-3 bg-gray-800 text-xs font-bold text-white">
               <span className="col-span-7">รวมทั้งหมด</span>
@@ -269,7 +315,6 @@ export default function DailyReport() {
             </div>
           )}
         </div>
-
       </div>
     </div>
   )
