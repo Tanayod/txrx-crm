@@ -58,6 +58,7 @@ export default function Dashboard() {
     const todayStr = today.toISOString().slice(0,10)
     const { from, to } = getDateRange()
 
+    // DTD
     const yesterday = new Date(today); yesterday.setDate(today.getDate()-1)
     const yestStr = yesterday.toISOString().slice(0,10)
     const { data: todayBookings } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').eq('booking_date', todayStr)
@@ -65,6 +66,7 @@ export default function Dashboard() {
     const dtd = todayBookings?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
     const dtdPrev = yestBookings?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
 
+    // WTD
     const dayOfWeek = today.getDay()
     const diffToMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     const wtdDays = diffToMon + 1
@@ -78,6 +80,7 @@ export default function Dashboard() {
     const lastWTotal = lastWData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
     const wtdPrevAvg = lastWTotal / 7
 
+    // MTD
     const mtdDays = today.getDate()
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
@@ -90,6 +93,7 @@ export default function Dashboard() {
     const lastMTotal = lastMData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
     const mtdPrevAvg = lastMTotal / daysInLastMonth
 
+    // Range
     let rangeQuery = supabase.from('bookings').select('*, customers(customer_name), medical_cases(*), payments(*)')
     if (from) rangeQuery = rangeQuery.gte('booking_date', from)
     if (to) rangeQuery = rangeQuery.lte('booking_date', to)
@@ -103,33 +107,40 @@ export default function Dashboard() {
     prevQuery = prevQuery.gte('booking_date', prevFrom).lte('booking_date', prevTo)
     const { data: prevData } = await prevQuery
 
+    // Utilization
     const totalBooked = rangeData?.reduce((s,b) => s + (b.booked_count || 0), 0) || 0
     const totalActual = rangeData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || 0), 0) || 0
     const utilization = totalBooked > 0 ? Math.min(Math.round((totalActual/totalBooked)*100), 100) : 0
 
+    // Revenue
     const revenue = rangeData?.reduce((s,b) => s + ((b.payments as any)?.[0]?.amount_received || 0), 0) || 0
     const prevRevenue = prevData?.reduce((s,b) => s + ((b.payments as any)?.[0]?.amount_received || 0), 0) || 0
 
+    // Peak days
     const days = [0,0,0,0,0,0,0]
     rangeData?.forEach(b => { const d = new Date(b.booking_date).getDay(); days[d] += ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
     setPeakDays(days)
 
+    // Service breakdown
     const services: any = {}, prevServices: any = {}
     rangeData?.forEach(b => { const s = b.service_type || 'ไม่ระบุ'; services[s] = (services[s]||0) + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
     prevData?.forEach(b => { const s = b.service_type || 'ไม่ระบุ'; prevServices[s] = (prevServices[s]||0) + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
     setServiceBreakdown(Object.entries(services).sort((a:any,b:any) => b[1]-a[1]).map(([k,v]) => ({ name: k, count: v as number })))
     setPrevServiceBreakdown(Object.entries(prevServices).map(([k,v]) => ({ name: k, count: v as number })))
 
+    // Top customers
     const custCount: any = {}
     rangeData?.forEach(b => { const n = b.customers?.customer_name; if (n) custCount[n] = (custCount[n]||0) + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
     setTopCustomers(Object.entries(custCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,10).map(([name,count]) => ({ name, count })))
 
+    // Active & Repeat
     const activeSet = new Set(rangeData?.map(b => b.customers?.customer_name).filter(Boolean))
     const custBookings: any = {}
     rangeData?.forEach(b => { const n = b.customers?.customer_name; if (n) custBookings[n] = (custBookings[n]||0) + 1 })
     const repeatCount = Object.values(custBookings).filter((v:any) => v > 1).length
     const repeatRate = activeSet.size > 0 ? Math.round((repeatCount/activeSet.size)*100) : 0
 
+    // Retention
     const ninetyDaysAgo = new Date(today); ninetyDaysAgo.setDate(today.getDate()-90)
     const { data: allBookings } = await supabase.from('bookings').select('booking_date, service_type, customers(customer_name)').gte('booking_date', ninetyDaysAgo.toISOString().slice(0,10)).lte('booking_date', yestStr)
     const lastSeen: any = {}
@@ -153,18 +164,29 @@ export default function Dashboard() {
       renew: renewList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5)
     })
 
-    // Aging — แบบเดิม: booked - actual สะสมทั้งปี
+    // Aging certs — booked - actual สะสมทั้งปี
     const thisYear = `${today.getFullYear()}-01-01`
-    const { data: yearBookings } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', thisYear).lte('booking_date', todayStr)
-    const totalPendingCerts = yearBookings?.reduce((s, b) => {
-      const actual = (b.medical_cases as any)?.[0]?.actual_count || 0
-      const booked = b.booked_count || 0
-      return s + Math.max(booked - actual, 0)
-    }, 0) || 0
+    const { data: yearBookings } = await supabase
+      .from('bookings')
+      .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count)')
+      .gte('booking_date', thisYear)
+      .lte('booking_date', todayStr)
 
-    const { data: aging } = await supabase.from('medical_cases').select('*, bookings(case_number, booked_count, customers(customer_name))').eq('cert_status', 'รอส่ง').lt('cert_deadline', todayStr).order('cert_deadline', { ascending: true }).limit(5)
-    setAgingCerts(aging || [])
+    const agingList = (yearBookings || [])
+      .map(b => ({
+        case_number: b.case_number,
+        customer_name: (b.customers as any)?.customer_name,
+        booking_date: b.booking_date,
+        pending: Math.max((b.booked_count || 0) - ((b.medical_cases as any)?.[0]?.actual_count || 0), 0),
+        daysOver: Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
+      }))
+      .filter(b => b.pending > 0)
+      .sort((a, b) => b.pending - a.pending)
 
+    const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
+    setAgingCerts(agingList.slice(0, 5))
+
+    // Pending payments
     const { data: allCustomers } = await supabase.from('customers').select('id')
     const { data: pendingData } = await supabase.from('payments').select('id').in('payment_status', ['ยังไม่ชำระ','ค้างชำระ'])
 
@@ -289,19 +311,17 @@ export default function Dashboard() {
             </div>
             <p className="text-xs text-gray-400 mt-1">จอง vs ตรวจจริง</p>
           </div>
-          <div className="bg-white border border-l-4 border-l-emerald-500 border-gray-100 rounded-xl p-4 shadow-sm col-span-2 cursor-pointer hover:border-l-emerald-600 transition-colors" onClick={() => window.location.href='/payments'}>
+          <div className="bg-white border-l-4 border-l-emerald-500 border border-gray-100 rounded-xl p-4 shadow-sm col-span-2 cursor-pointer" onClick={() => window.location.href='/payments'}>
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">รับเงินช่วงนี้</p>
             <p className="text-3xl font-bold text-emerald-600">฿{loading ? '—' : kpi.revenue.toLocaleString()}</p>
-            <div className="flex items-center gap-1 mt-1">
-              <Trend cur={kpi.revenue} prev={kpi.prevRevenue} label="vs ช่วงก่อน"/>
-            </div>
+            <Trend cur={kpi.revenue} prev={kpi.prevRevenue} label="vs ช่วงก่อน"/>
           </div>
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Active</p>
             <p className="text-3xl font-bold text-gray-800">{loading ? '—' : kpi.activeCustomers}</p>
             <p className="text-xs text-gray-400 mt-1">จาก {kpi.totalCustomers} ราย</p>
           </div>
-          <div className="bg-white border border-l-4 border-l-purple-500 border-gray-100 rounded-xl p-4 shadow-sm">
+          <div className="bg-white border-l-4 border-l-purple-500 border border-gray-100 rounded-xl p-4 shadow-sm">
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Repeat Rate</p>
             <p className="text-3xl font-bold text-purple-600">{loading ? '—' : `${kpi.repeatRate}%`}</p>
             <p className="text-xs text-gray-400 mt-1">Loyalty</p>
@@ -310,7 +330,6 @@ export default function Dashboard() {
 
         {/* Charts Row */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {/* Peak Day */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-5">📊 Peak Day Analysis</p>
             <div className="flex items-end gap-2 h-32">
@@ -331,7 +350,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Service Breakdown */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">📋 ประเภทงาน (เทียบช่วงก่อน)</p>
             <div className="space-y-3">
@@ -347,9 +365,7 @@ export default function Dashboard() {
                       <span className="text-sm text-gray-700">{s.name}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-gray-800">{s.count.toLocaleString()}</span>
-                        <span className={`text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {up?'+':'-'}{pct}%
-                        </span>
+                        <span className={`text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>{up?'+':'-'}{pct}%</span>
                       </div>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
@@ -360,14 +376,14 @@ export default function Dashboard() {
               })}
             </div>
             <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2">
-              <div className="bg-red-50 border border-red-100 rounded-xl p-3 cursor-pointer hover:bg-red-100 transition-colors" onClick={() => window.location.href='/payments'}>
+              <div className="bg-red-50 border border-red-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/payments'}>
                 <p className="text-xs text-red-500 font-semibold mb-0.5">ค้างชำระ</p>
                 <p className="text-2xl font-bold text-red-500">{kpi.pendingPayments}</p>
                 <p className="text-xs text-red-400">รายการ</p>
               </div>
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => window.location.href='/medical'}>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/medical'}>
                 <p className="text-xs text-amber-600 font-semibold mb-0.5">ค้างใบแพทย์</p>
-                <p className="text-2xl font-bold text-amber-500">{kpi.overdueCerts}</p>
+                <p className="text-2xl font-bold text-amber-500">{kpi.overdueCerts.toLocaleString()}</p>
                 <p className="text-xs text-amber-400">ใบ · สะสมปีนี้</p>
               </div>
             </div>
@@ -405,7 +421,7 @@ export default function Dashboard() {
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">⚠️ Aging ใบแพทย์</p>
-              <span className="text-xs text-red-500 font-semibold">{kpi.overdueCerts} ใบสะสม</span>
+              <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">สะสม {kpi.overdueCerts.toLocaleString()} ใบ</span>
             </div>
             <div className="space-y-2">
               {agingCerts.length === 0 && !loading && (
@@ -414,24 +430,20 @@ export default function Dashboard() {
                   <p className="text-sm text-emerald-600 font-medium">ไม่มีค้างใบแพทย์</p>
                 </div>
               )}
-              {agingCerts.map(c => {
-                const daysOver = Math.floor((new Date().getTime() - new Date(c.cert_deadline).getTime()) / 86400000)
-                const pending = ((c.bookings as any)?.booked_count || 0) - (c.actual_count || 0)
-                return (
-                  <div key={c.id} className="flex items-center justify-between p-2.5 bg-red-50 border border-red-100 rounded-xl">
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-gray-700 truncate">{(c.bookings as any)?.customers?.customer_name}</p>
-                      <p className="text-xs text-gray-400">{(c.bookings as any)?.case_number}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      {pending > 0 && <p className="text-xs font-bold text-red-500">{pending} ใบ</p>}
-                      <span className="text-xs text-red-400 flex items-center gap-0.5 justify-end">
-                        <IconAlertTriangle size={9}/>{daysOver}วัน
-                      </span>
-                    </div>
+              {agingCerts.map((c, i) => (
+                <div key={i} className="flex items-center justify-between p-2.5 bg-red-50 border border-red-100 rounded-xl">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-gray-700 truncate">{c.customer_name}</p>
+                    <p className="text-xs text-gray-400">{c.case_number} · {c.booking_date}</p>
                   </div>
-                )
-              })}
+                  <div className="text-right flex-shrink-0 ml-2">
+                    <p className="text-xs font-bold text-red-500">{c.pending} ใบ</p>
+                    <span className="text-xs text-red-400 flex items-center gap-0.5 justify-end">
+                      <IconAlertTriangle size={9}/> ค้าง {c.daysOver} วัน
+                    </span>
+                  </div>
+                </div>
+              ))}
               {agingCerts.length > 0 && (
                 <button onClick={() => window.location.href='/medical'} className="w-full text-xs text-gray-400 hover:text-[#185FA5] flex items-center justify-center gap-1 pt-1 transition-colors">
                   ดูทั้งหมด <IconChevronRight size={12}/>
