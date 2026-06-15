@@ -166,9 +166,10 @@ export default function Dashboard() {
 
     // ✅ Aging certs — นับจาก medical_cases ที่ cert_status = 'รอส่ง' เท่านั้น
     const { data: yearMedical } = await supabase
-      .from('medical_cases')
-      .select('*, bookings(case_number, booking_date, booked_count, customers(customer_name))')
-      .eq('cert_status', 'รอส่ง')
+  .from('medical_cases')
+  .select('*, bookings(case_number, booking_date, booked_count, customers(customer_name))')
+  .eq('cert_status', 'รอส่ง')
+  .gte('exam_date', '2026-06-01')
 
     const agingList = (yearMedical || [])
       .map(mc => ({
