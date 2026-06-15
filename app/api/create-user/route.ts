@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
@@ -16,7 +18,6 @@ export async function POST(req: Request) {
       }
     )
 
-    // สร้าง user ใน Auth
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -27,7 +28,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // insert เข้า users table โดยใช้ supabaseAdmin (bypass RLS)
     const { error: insertError } = await supabaseAdmin
       .from('users')
       .insert([{
@@ -38,7 +38,6 @@ export async function POST(req: Request) {
       }])
 
     if (insertError) {
-      console.log('Insert error:', insertError)
       return NextResponse.json({ error: insertError.message }, { status: 400 })
     }
 
