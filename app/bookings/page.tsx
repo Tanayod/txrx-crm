@@ -59,8 +59,9 @@ export default function Bookings() {
     if (data) setCustomers(data)
   }
 
-  async function fetchLocations() {
-    const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('name')
+ async function fetchLocations() {
+    const { data, error } = await supabase.from('locations').select('*')
+    console.log('locations:', data, error)
     if (data) setLocations(data)
   }
 
