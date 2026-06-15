@@ -49,9 +49,9 @@ export default function DailyReport() {
       const tomorrowData = data.filter(b => b.booking_date === tomorrow)
       setSummary({
         todayBooked: todayData.reduce((s,b) => s + (b.booked_count || 0), 0),
-        todayActual: todayData.reduce((s,b) => s + (b.medical_cases?.[0]?.actual_count || 0), 0),
+        todayActual: todayData.reduce((s,b) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0),
         tomorrowBooked: tomorrowData.reduce((s,b) => s + (b.booked_count || 0), 0),
-        tomorrowActual: tomorrowData.reduce((s,b) => s + (b.medical_cases?.[0]?.actual_count || 0), 0),
+        tomorrowActual: tomorrowData.reduce((s,b) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0),
       })
     }
     setLoading(false)
@@ -66,7 +66,7 @@ export default function DailyReport() {
   })
 
   const totalBooked = filtered.reduce((s,b) => s + (b.booked_count || 0), 0)
-  const totalActual = filtered.reduce((s,b) => s + (b.medical_cases?.[0]?.actual_count || 0), 0)
+  const totalActual = filtered.reduce((s,b) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0)
 
   // Group by date
   const grouped: any = {}
@@ -85,7 +85,7 @@ export default function DailyReport() {
       'Type': b.service_type || '',
       'เวลา': b.exam_time || '',
       'ยอดจอง': b.booked_count || 0,
-      'ยอดตรวจจริง': b.medical_cases?.[0]?.actual_count ?? '',
+      'ยอดตรวจจริง': (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count ?? '',
       'สถานะเงิน': b.payments?.[0]?.payment_status || 'ยังไม่ชำระ',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -218,7 +218,7 @@ export default function DailyReport() {
           ) : Object.keys(grouped).sort().map(date => {
             const dayBookings = grouped[date]
             const dayBooked = dayBookings.reduce((s:number,b:any) => s + (b.booked_count || 0), 0)
-            const dayActual = dayBookings.reduce((s:number,b:any) => s + (b.medical_cases?.[0]?.actual_count || 0), 0)
+            const dayActual = dayBookings.reduce((s:number,b:any) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0)
             const isToday = date === today
             const isTomorrow = date === tomorrow
             return (
@@ -239,7 +239,7 @@ export default function DailyReport() {
                 </div>
                 {/* Rows */}
                 {dayBookings.map((b: any) => {
-                  const actual = b.medical_cases?.[0]?.actual_count
+                  const actual = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count
                   return (
                     <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-blue-50/20 transition-colors items-center">
                       <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>

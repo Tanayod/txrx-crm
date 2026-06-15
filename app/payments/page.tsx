@@ -172,7 +172,7 @@ export default function Payments() {
   const exportExcel = () => {
     const rows = filtered.map(b => {
       const p = b.payments?.[0]
-      const mc = b.medical_cases?.[0]
+      const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
       const specialAmt = getSpecialTotal(b)
       const grandTotal = getGrandTotal(b)
       return {
@@ -278,7 +278,7 @@ export default function Payments() {
           ) : filtered.map((b) => {
             const status = getPaymentStatus(b)
             const p = b.payments?.[0]
-            const mc = b.medical_cases?.[0]
+            const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
             const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
             const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
             const specialAmt = getSpecialTotal(b)
