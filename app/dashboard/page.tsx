@@ -165,22 +165,22 @@ export default function Dashboard() {
     })
 
     // ✅ Aging certs — นับจาก medical_cases ที่ cert_status = 'รอส่ง' เท่านั้น
-    const { data: yearMedical } = await supabase
-  .from('medical_cases')
-  .select('*, bookings(case_number, booking_date, booked_count, customers(customer_name))')
-  .eq('cert_status', 'รอส่ง')
-  .gte('exam_date', '2026-06-01')
+   const { data: yearMedical } = await supabase
+  .from('bookings')
+  .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count)')
+  .gte('booking_date', '2026-06-01')
+  .lte('booking_date', todayStr)
 
-    const agingList = (yearMedical || [])
-      .map(mc => ({
-        case_number: (mc.bookings as any)?.case_number,
-        customer_name: (mc.bookings as any)?.customers?.customer_name,
-        booking_date: (mc.bookings as any)?.booking_date,
-        pending: Math.max(((mc.bookings as any)?.booked_count || 0) - (mc.actual_count || 0), 0),
-        daysOver: Math.floor((today.getTime() - new Date((mc.bookings as any)?.booking_date || todayStr).getTime()) / 86400000)
-      }))
-      .filter(b => b.pending > 0)
-      .sort((a, b) => b.pending - a.pending)
+  const agingList = (yearMedical || [])
+  .map(b => ({
+    case_number: b.case_number,
+    customer_name: (b.customers as any)?.customer_name,
+    booking_date: b.booking_date,
+    pending: Math.max((b.booked_count || 0) - ((b.medical_cases as any)?.[0]?.actual_count || 0), 0),
+    daysOver: Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
+  }))
+  .filter(b => b.pending > 0)
+  .sort((a, b) => b.pending - a.pending)
 
     const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 5))
