@@ -128,7 +128,7 @@ export default function Bookings() {
   }
 
   const getMedicalStatus = (b: any) => {
-    const mc = b.medical_cases?.[0]
+    const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-400', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบ', color: 'bg-green-100 text-green-700', icon: IconCheck }
     if (mc.cert_deadline && new Date() > new Date(mc.cert_deadline)) return { label: 'เกิน 3 วัน!', color: 'bg-red-100 text-red-600', icon: IconAlertTriangle }
@@ -152,7 +152,7 @@ export default function Bookings() {
 
   const exportExcel = () => {
     const rows = filtered.map(b => {
-      const mc = b.medical_cases?.[0]
+      const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
       const p = b.payments?.[0]
       return {
         'เลขจอง': b.case_number,
@@ -273,7 +273,7 @@ export default function Bookings() {
           ) : filtered.map((b) => {
             const payStatus = getPaymentStatus(b)
             const medStatus = getMedicalStatus(b)
-            const mc = b.medical_cases?.[0]
+            const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
             return (
               <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
                 <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
