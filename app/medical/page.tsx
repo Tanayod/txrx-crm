@@ -41,7 +41,7 @@ export default function Medical() {
 
   const handleOpenModal = async (booking: any) => {
     setSelected(booking)
-    const mc = booking.medical_cases?.[0]
+    const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
     setForm({ actual_count: mc?.actual_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date })
     if (mc?.id) await fetchCertificates(mc.id)
     else setCertificates([])
@@ -49,7 +49,7 @@ export default function Medical() {
   }
 
   const handleSaveMedical = async () => {
-    const mc = selected?.medical_cases?.[0]
+   const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     const deadline = new Date(form.exam_date)
     deadline.setDate(deadline.getDate() + 3)
     const deadlineStr = deadline.toISOString().slice(0, 10)
@@ -79,7 +79,7 @@ export default function Medical() {
   }
 
   const getCertStatus = (booking: any) => {
-    const mc = booking.medical_cases?.[0]
+    const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-500', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck }
     const deadline = new Date(mc.cert_deadline)
@@ -88,7 +88,7 @@ export default function Medical() {
   }
 
   const filtered = cases.filter(b => {
-    const mc = b.medical_cases?.[0]
+    const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
     const status = getCertStatus(b)
     const date = mc?.exam_date || b.booking_date
     if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
@@ -100,7 +100,7 @@ export default function Medical() {
 
   const exportExcel = () => {
     const rows = filtered.map(b => {
-      const mc = b.medical_cases?.[0]
+      const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
       const status = getCertStatus(b)
       return {
         'เลขจอง': b.case_number,
@@ -182,7 +182,7 @@ export default function Medical() {
           ) : (
             filtered.map((b) => {
               const status = getCertStatus(b)
-              const mc = b.medical_cases?.[0]
+              const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
               return (
                 <div key={b.id} className="grid grid-cols-6 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
