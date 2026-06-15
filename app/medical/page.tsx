@@ -2,10 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconUpload, IconCheck, IconClock, IconAlertTriangle } from '@tabler/icons-react'
+import { IconUpload, IconCheck, IconClock, IconAlertTriangle, IconSearch, IconDownload } from '@tabler/icons-react'
 
 export default function Medical() {
   const { user, role, ready, logout } = useAuth('/medical')
@@ -17,10 +18,13 @@ export default function Medical() {
   const [form, setForm] = useState({ actual_count: 0, doctor_note: '', exam_date: '' })
   const [loaded, setLoaded] = useState(false)
 
-  if (ready && !loaded) {
-    fetchCases()
-    setLoaded(true)
-  }
+  // Filters
+  const [search, setSearch] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+
+  if (ready && !loaded) { fetchCases(); setLoaded(true) }
 
   async function fetchCases() {
     const { data } = await supabase
@@ -38,11 +42,7 @@ export default function Medical() {
   const handleOpenModal = async (booking: any) => {
     setSelected(booking)
     const mc = booking.medical_cases?.[0]
-    setForm({
-      actual_count: mc?.actual_count || 0,
-      doctor_note: mc?.doctor_note || '',
-      exam_date: mc?.exam_date || booking.booking_date
-    })
+    setForm({ actual_count: mc?.actual_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date })
     if (mc?.id) await fetchCertificates(mc.id)
     else setCertificates([])
     setShowModal(true)
@@ -54,24 +54,11 @@ export default function Medical() {
     deadline.setDate(deadline.getDate() + 3)
     const deadlineStr = deadline.toISOString().slice(0, 10)
     if (mc?.id) {
-      await supabase.from('medical_cases').update({
-        actual_count: form.actual_count,
-        doctor_note: form.doctor_note,
-        exam_date: form.exam_date,
-        cert_deadline: deadlineStr,
-      }).eq('id', mc.id)
+      await supabase.from('medical_cases').update({ actual_count: form.actual_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr }).eq('id', mc.id)
     } else {
-      await supabase.from('medical_cases').insert([{
-        booking_id: selected.id,
-        actual_count: form.actual_count,
-        doctor_note: form.doctor_note,
-        exam_date: form.exam_date,
-        cert_deadline: deadlineStr,
-        cert_status: 'รอส่ง',
-      }])
+      await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง' }])
     }
-    fetchCases()
-    setShowModal(false)
+    fetchCases(); setShowModal(false)
   }
 
   const handleUploadFile = async (e: any) => {
@@ -86,8 +73,7 @@ export default function Medical() {
       const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
       await supabase.from('certificates').insert([{ case_id: mc.id, file_name: file.name, storage_url: urlData.publicUrl }])
       await supabase.from('medical_cases').update({ cert_status: 'เรียบร้อย' }).eq('id', mc.id)
-      fetchCertificates(mc.id)
-      fetchCases()
+      fetchCertificates(mc.id); fetchCases()
     }
     setUploading(false)
   }
@@ -101,16 +87,89 @@ export default function Medical() {
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock }
   }
 
+  const filtered = cases.filter(b => {
+    const mc = b.medical_cases?.[0]
+    const status = getCertStatus(b)
+    const date = mc?.exam_date || b.booking_date
+    if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
+    if (filterDateFrom && date < filterDateFrom) return false
+    if (filterDateTo && date > filterDateTo) return false
+    if (filterStatus && status.label !== filterStatus) return false
+    return true
+  })
+
+  const exportExcel = () => {
+    const rows = filtered.map(b => {
+      const mc = b.medical_cases?.[0]
+      const status = getCertStatus(b)
+      return {
+        'เลขจอง': b.case_number,
+        'ลูกค้า': b.customers?.customer_name,
+        'วันที่ตรวจ': mc?.exam_date || b.booking_date,
+        'จำนวนจอง': b.booked_count,
+        'จำนวนตรวจจริง': mc?.actual_count || '-',
+        'สถานะใบแพทย์': status.label,
+        'หมายเหตุ': mc?.doctor_note || '',
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Medical')
+    XLSX.writeFile(wb, `medical_${new Date().toISOString().slice(0,10)}.xlsx`)
+  }
+
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
     <div className="flex min-h-screen bg-[#F1F5F9]">
       <Sidebar user={user} role={role} currentPath="/medical" onLogout={logout} />
-
       <div className="flex-1 ml-56 p-6">
-        <div className="mb-6">
-          <p className="text-base font-medium text-gray-800">ทีมแพทย์</p>
-          <p className="text-xs text-gray-400 mt-0.5">บันทึกจำนวนตรวจจริงและแนบใบรับรองแพทย์</p>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <p className="text-base font-medium text-gray-800">ทีมแพทย์</p>
+            <p className="text-xs text-gray-400 mt-0.5">บันทึกจำนวนตรวจจริงและแนบใบรับรองแพทย์</p>
+          </div>
+          <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+            <IconDownload size={15} /> Export Excel
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
+          <div className="relative">
+            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
+            <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
+              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
+              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">สถานะใบแพทย์</label>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option>รอบันทึก</option>
+                <option>รอส่งใบแพทย์</option>
+                <option>เกิน 3 วัน!</option>
+                <option>ส่งครบแล้ว</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-between items-center pt-1">
+            <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
+            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('') }}
+              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+          </div>
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
@@ -118,10 +177,10 @@ export default function Medical() {
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่ตรวจ</span>
             <span>จอง / จริง</span><span>สถานะใบแพทย์</span><span></span>
           </div>
-          {cases.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">ยังไม่มีรายการ</div>
+          {filtered.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
           ) : (
-            cases.map((b) => {
+            filtered.map((b) => {
               const status = getCertStatus(b)
               const mc = b.medical_cases?.[0]
               return (

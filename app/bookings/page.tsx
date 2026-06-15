@@ -2,10 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react'
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload } from '@tabler/icons-react'
 
 const provinces = ['กรุงเทพมหานคร','สมุทรสาคร','ชลบุรี','นนทบุรี','ปทุมธานี','ระยอง','ลพบุรี','เชียงใหม่','นครปฐม','สมุทรปราการ','พระนครศรีอยุธยา','ลำพูน','เพชรบูรณ์','อื่นๆ']
 
@@ -34,15 +35,18 @@ export default function Bookings() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<any>(emptyForm)
 
-  if (ready && !loaded) {
-    fetchAll()
-    setLoaded(true)
-  }
+  // Filters
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterShift, setFilterShift] = useState('')
+  const [filterService, setFilterService] = useState('')
+  const [filterLocation, setFilterLocation] = useState('')
+  const [filterSim, setFilterSim] = useState('')
+
+  if (ready && !loaded) { fetchAll(); setLoaded(true) }
 
   async function fetchAll() {
-    fetchBookings()
-    fetchCustomers()
-    fetchLocations()
+    fetchBookings(); fetchCustomers(); fetchLocations()
   }
 
   async function fetchBookings() {
@@ -70,48 +74,31 @@ export default function Bookings() {
   }
 
   const openCreate = () => {
-    setEditingId(null)
-    setForm(emptyForm)
-    setCustomerSearch('')
-    setShowModal(true)
+    setEditingId(null); setForm(emptyForm); setCustomerSearch(''); setShowModal(true)
   }
 
   const openEdit = (b: any) => {
     setEditingId(b.id)
     setForm({
-      customer_id: b.customer_id,
-      customer_name_display: b.customers?.customer_name || '',
-      booking_date: b.booking_date,
-      shift: b.shift,
-      service_type: b.service_type,
-      province: b.province || '',
-      location_name: b.location_name || '',
-      location_url: b.location_url || '',
-      exam_time: b.exam_time || '',
-      nationality: b.nationality || 'พม่า',
-      booked_count: b.booked_count || 0,
-      sim_true_status: b.sim_true_status || 'รอคำตอบลูกค้า',
-      admin_note: b.admin_note || ''
+      customer_id: b.customer_id, customer_name_display: b.customers?.customer_name || '',
+      booking_date: b.booking_date, shift: b.shift, service_type: b.service_type,
+      province: b.province || '', location_name: b.location_name || '',
+      location_url: b.location_url || '', exam_time: b.exam_time || '',
+      nationality: b.nationality || 'พม่า', booked_count: b.booked_count || 0,
+      sim_true_status: b.sim_true_status || 'รอคำตอบลูกค้า', admin_note: b.admin_note || ''
     })
-    setCustomerSearch('')
-    setShowModal(true)
+    setCustomerSearch(''); setShowModal(true)
   }
 
   const handleSave = async () => {
     if (!form.customer_id || !form.booking_date) return alert('กรุณาเลือกลูกค้าและวันที่')
     setSaving(true)
     const payload = {
-      customer_id: form.customer_id,
-      booking_date: form.booking_date,
-      shift: form.shift,
-      service_type: form.service_type,
-      province: form.province,
-      location_name: form.location_name,
-      location_url: form.location_url,
-      exam_time: form.exam_time,
-      nationality: form.nationality,
-      booked_count: form.booked_count,
-      sim_true_status: form.sim_true_status,
+      customer_id: form.customer_id, booking_date: form.booking_date,
+      shift: form.shift, service_type: form.service_type, province: form.province,
+      location_name: form.location_name, location_url: form.location_url,
+      exam_time: form.exam_time, nationality: form.nationality,
+      booked_count: form.booked_count, sim_true_status: form.sim_true_status,
       admin_note: form.admin_note,
     }
     if (editingId) {
@@ -119,27 +106,49 @@ export default function Bookings() {
     } else {
       await supabase.from('bookings').insert([{ ...payload, case_number: generateCaseNumber() }])
     }
-    setSaving(false)
-    fetchBookings()
-    setShowModal(false)
+    setSaving(false); fetchBookings(); setShowModal(false)
   }
 
   const handleDelete = async () => {
     if (!deleteId) return
     await supabase.from('bookings').delete().eq('id', deleteId)
-    setDeleteId(null)
-    fetchBookings()
+    setDeleteId(null); fetchBookings()
   }
 
   const filteredCustomers = customers.filter(c =>
     c.customer_name?.includes(customerSearch) || c.line_name?.includes(customerSearch)
   )
 
-  const filtered = bookings.filter(b =>
-    b.customers?.customer_name?.includes(search) ||
-    b.case_number?.includes(search) ||
-    b.location_name?.includes(search)
-  )
+  const filtered = bookings.filter(b => {
+    if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search) && !b.location_name?.includes(search)) return false
+    if (filterDateFrom && b.booking_date < filterDateFrom) return false
+    if (filterDateTo && b.booking_date > filterDateTo) return false
+    if (filterShift && b.shift !== filterShift) return false
+    if (filterService && b.service_type !== filterService) return false
+    if (filterLocation && b.location_name !== filterLocation) return false
+    if (filterSim && b.sim_true_status !== filterSim) return false
+    return true
+  })
+
+  const exportExcel = () => {
+    const rows = filtered.map(b => ({
+      'เลขจอง': b.case_number,
+      'ลูกค้า': b.customers?.customer_name,
+      'วันที่': b.booking_date,
+      'กะ': b.shift,
+      'ประเภทบริการ': b.service_type,
+      'จังหวัด': b.province,
+      'สถานที่': b.location_name,
+      'สัญชาติ': b.nationality,
+      'จำนวนจอง': b.booked_count,
+      'ซิมทรู': b.sim_true_status,
+      'หมายเหตุ': b.admin_note,
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Bookings')
+    XLSX.writeFile(wb, `bookings_${new Date().toISOString().slice(0,10)}.xlsx`)
+  }
 
   const statusColor: any = {
     'อนุญาต': 'bg-green-50 text-green-600',
@@ -155,32 +164,91 @@ export default function Bookings() {
   return (
     <div className="flex min-h-screen bg-[#F1F5F9]">
       <Sidebar user={user} role={role} currentPath="/bookings" onLogout={logout} />
-
       <div className="flex-1 ml-56 p-6">
         <div className="flex justify-between items-center mb-6">
           <div>
             <p className="text-base font-medium text-gray-800">จองคิว</p>
             <p className="text-xs text-gray-400 mt-0.5">รายการจองทั้งหมด</p>
           </div>
-          <button onClick={openCreate} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
-            <IconPlus size={16} /> จองคิวใหม่
-          </button>
+          <div className="flex gap-2">
+            <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+              <IconDownload size={15} /> Export Excel
+            </button>
+            <button onClick={openCreate} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
+              <IconPlus size={16} /> จองคิวใหม่
+            </button>
+          </div>
         </div>
 
-        <div className="relative mb-4">
-          <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
-          <input type="text" placeholder="ค้นหาลูกค้า เลขจอง หรือสถานที่..."
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] bg-white" />
+        {/* Search + Filters */}
+        <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
+          <div className="relative">
+            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
+            <input type="text" placeholder="ค้นหาลูกค้า เลขจอง หรือสถานที่..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
+              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
+              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">กะ</label>
+              <select value={filterShift} onChange={(e) => setFilterShift(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option>เช้า</option><option>บ่าย</option><option>เย็น</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ประเภทบริการ</label>
+              <select value={filterService} onChange={(e) => setFilterService(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option>ตรวจนอกสถานที่ (Mobile)</option>
+                <option>คลินิก</option><option>Walk-in</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">สถานที่</label>
+              <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ซิมทรู</label>
+              <select value={filterSim} onChange={(e) => setFilterSim(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option>แจ้งหรือแล้ว</option><option>คำกล่าวประสาน</option>
+                <option>รอคำตอบลูกค้า</option><option>อนุญาต</option>
+                <option>ไม่อนุญาต</option><option>walk-in คลินิก</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-between items-center pt-1">
+            <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
+            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterShift(''); setFilterService(''); setFilterLocation(''); setFilterSim('') }}
+              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+          </div>
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
           <div className="grid grid-cols-8 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
-            <span>สถานที่</span><span>จำนวนจอง</span><span>ซิมทรู</span><span>สถานะ</span><span></span>
+            <span>สถานที่</span><span>จำนวนจอง</span><span>ซิมทรู</span><span>กะ</span><span></span>
           </div>
           {filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">ยังไม่มีรายการจอง</div>
+            <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
           ) : (
             filtered.map((b) => (
               <div key={b.id} className="grid grid-cols-8 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
@@ -201,18 +269,14 @@ export default function Bookings() {
         </div>
       </div>
 
-      {/* Modal เพิ่ม/แก้ไข */}
       {showModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-lg max-h-[90vh] overflow-y-auto">
             <p className="text-base font-medium text-gray-800 mb-4">{editingId ? 'แก้ไขรายการจอง' : 'จองคิวใหม่'}</p>
             <div className="space-y-3">
-
-              {/* ลูกค้า */}
               <div className="relative">
                 <label className="text-xs text-gray-500 mb-1 block">ลูกค้า *</label>
-                <input
-                  value={form.customer_name_display || customerSearch}
+                <input value={form.customer_name_display || customerSearch}
                   onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); setForm({...form, customer_id:'', customer_name_display:''}) }}
                   onFocus={() => setShowCustomerDropdown(true)}
                   placeholder="พิมพ์ค้นหาลูกค้า..."
@@ -229,8 +293,6 @@ export default function Bookings() {
                   </div>
                 )}
               </div>
-
-              {/* วันที่ + กะ */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">วันที่ตรวจ *</label>
@@ -245,19 +307,14 @@ export default function Bookings() {
                   </select>
                 </div>
               </div>
-
-              {/* ประเภทบริการ */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ประเภทบริการ</label>
                 <select value={form.service_type} onChange={(e) => setForm({...form, service_type: e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                   <option>ตรวจนอกสถานที่ (Mobile)</option>
-                  <option>คลินิก</option>
-                  <option>Walk-in</option>
+                  <option>คลินิก</option><option>Walk-in</option>
                 </select>
               </div>
-
-              {/* จังหวัด + สัญชาติ */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">จังหวัด</label>
@@ -276,8 +333,6 @@ export default function Bookings() {
                   </select>
                 </div>
               </div>
-
-              {/* ชื่อสถานที่ — dropdown จาก locations table */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ชื่อสถานที่</label>
                 <select value={form.location_name} onChange={(e) => setForm({...form, location_name: e.target.value})}
@@ -286,16 +341,12 @@ export default function Bookings() {
                   {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
                 </select>
               </div>
-
-              {/* ลิ้งค์ map */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ลิ้งค์ Google Map</label>
                 <input value={form.location_url} onChange={(e) => setForm({...form, location_url: e.target.value})}
                   placeholder="https://maps.app.goo.gl/..."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
               </div>
-
-              {/* เวลา + จำนวน */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">เวลา</label>
@@ -311,28 +362,20 @@ export default function Bookings() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
                 </div>
               </div>
-
-              {/* ซิมทรู */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ซิมทรู</label>
                 <select value={form.sim_true_status} onChange={(e) => setForm({...form, sim_true_status: e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
-                  <option>แจ้งหรือแล้ว</option>
-                  <option>คำกล่าวประสาน</option>
-                  <option>รอคำตอบลูกค้า</option>
-                  <option>อนุญาต</option>
-                  <option>ไม่อนุญาต</option>
-                  <option>walk-in คลินิก</option>
+                  <option>แจ้งหรือแล้ว</option><option>คำกล่าวประสาน</option>
+                  <option>รอคำตอบลูกค้า</option><option>อนุญาต</option>
+                  <option>ไม่อนุญาต</option><option>walk-in คลินิก</option>
                 </select>
               </div>
-
-              {/* หมายเหตุ */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>
                 <textarea value={form.admin_note} onChange={(e) => setForm({...form, admin_note: e.target.value})} rows={2}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
               </div>
-
             </div>
             <div className="flex gap-2 mt-5 justify-end">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
@@ -345,7 +388,6 @@ export default function Bookings() {
         </div>
       )}
 
-      {/* Modal ยืนยันลบ */}
       {deleteId && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-80 shadow-lg">
@@ -358,7 +400,6 @@ export default function Bookings() {
           </div>
         </div>
       )}
-
     </div>
   )
 }

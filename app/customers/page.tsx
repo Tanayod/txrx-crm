@@ -1,81 +1,136 @@
 'use client'
 
 export const dynamic = 'force-dynamic'
-
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconPlus, IconSearch } from '@tabler/icons-react'
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload } from '@tabler/icons-react'
 
 export default function Customers() {
   const { user, role, ready, logout } = useAuth('/customers')
   const [customers, setCustomers] = useState<any[]>([])
   const [search, setSearch] = useState('')
+  const [filterType, setFilterType] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [form, setForm] = useState({
-    line_name: '', customer_name: '', phone: '',
-    type: 'general', credit_limit: 0, note: ''
-  })
+  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, note: '' })
 
-  if (ready && !loaded) {
-    fetchCustomers()
-    setLoaded(true)
-  }
+  if (ready && !loaded) { fetchCustomers(); setLoaded(true) }
 
   async function fetchCustomers() {
     const { data } = await supabase.from('customers').select('*').order('created_at', { ascending: false })
     if (data) setCustomers(data)
   }
 
-  const handleSave = async () => {
-    const { error } = await supabase.from('customers').insert([form])
-    if (!error) {
-      fetchCustomers()
-      setShowModal(false)
-      setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, note: '' })
-    }
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, note: '' })
+    setShowModal(true)
   }
 
-  const filtered = customers.filter(c =>
-    c.customer_name?.includes(search) || c.line_name?.includes(search)
-  )
+  const openEdit = (c: any) => {
+    setEditingId(c.id)
+    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, note: c.note || '' })
+    setShowModal(true)
+  }
+
+  const handleSave = async () => {
+    if (!form.customer_name) return alert('กรุณากรอกชื่อลูกค้า')
+    if (editingId) {
+      await supabase.from('customers').update(form).eq('id', editingId)
+    } else {
+      await supabase.from('customers').insert([form])
+    }
+    fetchCustomers(); setShowModal(false)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    await supabase.from('customers').delete().eq('id', deleteId)
+    setDeleteId(null); fetchCustomers()
+  }
+
+  const filtered = customers.filter(c => {
+    if (search && !c.customer_name?.includes(search) && !c.line_name?.includes(search) && !c.phone?.includes(search)) return false
+    if (filterType && c.type !== filterType) return false
+    return true
+  })
+
+  const exportExcel = () => {
+    const rows = filtered.map(c => ({
+      'รหัส': `CUS-${String(c.customer_code).padStart(3,'0')}`,
+      'ชื่อลูกค้า': c.customer_name,
+      'ชื่อ LINE': c.line_name || '',
+      'เบอร์โทร': c.phone || '',
+      'ประเภท': c.type === 'credit' ? 'เครดิต' : 'ทั่วไป',
+      'วงเงินเครดิต': c.credit_limit || 0,
+      'หมายเหตุ': c.note || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Customers')
+    XLSX.writeFile(wb, `customers_${new Date().toISOString().slice(0,10)}.xlsx`)
+  }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
     <div className="flex min-h-screen bg-[#F1F5F9]">
       <Sidebar user={user} role={role} currentPath="/customers" onLogout={logout} />
-
       <div className="flex-1 ml-56 p-6">
         <div className="flex justify-between items-center mb-6">
           <div>
             <p className="text-base font-medium text-gray-800">ลูกค้า</p>
             <p className="text-xs text-gray-400 mt-0.5">รายชื่อลูกค้าทั้งหมด</p>
           </div>
-          <button onClick={() => setShowModal(true)} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
-            <IconPlus size={16} /> เพิ่มลูกค้า
-          </button>
+          <div className="flex gap-2">
+            <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+              <IconDownload size={15} /> Export Excel
+            </button>
+            <button onClick={openCreate} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
+              <IconPlus size={16} /> เพิ่มลูกค้า
+            </button>
+          </div>
         </div>
 
-        <div className="relative mb-4">
-          <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
-          <input type="text" placeholder="ค้นหาชื่อลูกค้า หรือชื่อ LINE..."
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] bg-white" />
+        <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
+          <div className="relative">
+            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
+            <input type="text" placeholder="ค้นหาชื่อลูกค้า LINE หรือเบอร์โทร..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+          </div>
+          <div className="flex gap-3 items-end">
+            <div className="w-48">
+              <label className="text-xs text-gray-400 mb-1 block">ประเภทลูกค้า</label>
+              <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="general">ทั่วไป</option>
+                <option value="credit">เครดิต</option>
+              </select>
+            </div>
+            <div className="flex justify-between items-center flex-1">
+              <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
+              <button onClick={() => { setSearch(''); setFilterType('') }} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-6 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+          <div className="grid grid-cols-7 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>รหัส</span><span>ชื่อลูกค้า</span><span>ชื่อ LINE</span>
-            <span>เบอร์โทร</span><span>ประเภท</span><span>หมายเหตุ</span>
+            <span>เบอร์โทร</span><span>ประเภท</span><span>หมายเหตุ</span><span></span>
           </div>
           {filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">ยังไม่มีข้อมูลลูกค้า</div>
+            <div className="p-8 text-center text-sm text-gray-400">ไม่พบข้อมูลลูกค้า</div>
           ) : (
             filtered.map((c) => (
-              <div key={c.id} className="grid grid-cols-6 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50">
+              <div key={c.id} className="grid grid-cols-7 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                 <span className="text-gray-400 text-xs">CUS-{String(c.customer_code).padStart(3,'0')}</span>
                 <span className="font-medium text-gray-700">{c.customer_name}</span>
                 <span className="text-gray-500">{c.line_name || '-'}</span>
@@ -84,6 +139,10 @@ export default function Customers() {
                   {c.type === 'credit' ? 'เครดิต' : 'ทั่วไป'}
                 </span></span>
                 <span className="text-gray-400 text-xs">{c.note || '-'}</span>
+                <span className="flex gap-2 justify-end">
+                  <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-500"><IconEdit size={15} /></button>
+                  <button onClick={() => setDeleteId(c.id)} className="text-gray-400 hover:text-red-500"><IconTrash size={15} /></button>
+                </span>
               </div>
             ))
           )}
@@ -93,7 +152,7 @@ export default function Customers() {
       {showModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-lg">
-            <p className="text-base font-medium text-gray-800 mb-4">เพิ่มลูกค้าใหม่</p>
+            <p className="text-base font-medium text-gray-800 mb-4">{editingId ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้าใหม่'}</p>
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ชื่อลูกค้า *</label>
@@ -134,6 +193,19 @@ export default function Customers() {
             <div className="flex gap-2 mt-5 justify-end">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSave} className="px-4 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C]">บันทึก</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteId && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-80 shadow-lg">
+            <p className="text-base font-medium text-gray-800 mb-2">ยืนยันการลบ</p>
+            <p className="text-sm text-gray-500 mb-5">ต้องการลบลูกค้านี้ใช่ไหม?</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
+              <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">ลบ</button>
             </div>
           </div>
         </div>

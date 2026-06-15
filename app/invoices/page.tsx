@@ -1,12 +1,12 @@
 'use client'
 
 export const dynamic = 'force-dynamic'
-
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconPrinter } from '@tabler/icons-react'
+import { IconPrinter, IconSearch, IconDownload } from '@tabler/icons-react'
 
 export default function Invoices() {
   const { user, role, ready, logout } = useAuth('/invoices')
@@ -15,6 +15,11 @@ export default function Invoices() {
   const [showInvoice, setShowInvoice] = useState(false)
   const [pricePerHead, setPricePerHead] = useState(0)
   const [loaded, setLoaded] = useState(false)
+
+  // Filters
+  const [search, setSearch] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
 
   if (ready && !loaded) { fetchBookings(); setLoaded(true) }
 
@@ -47,6 +52,34 @@ export default function Invoices() {
   const paid = selected?.payments?.[0]?.amount_received || 0
   const remaining = total - paid
 
+  const filtered = bookings.filter(b => {
+    if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
+    if (filterDateFrom && b.booking_date < filterDateFrom) return false
+    if (filterDateTo && b.booking_date > filterDateTo) return false
+    return true
+  })
+
+  const exportExcel = () => {
+    const rows = filtered.map(b => {
+      const p = b.payments?.[0]
+      const mc = b.medical_cases?.[0]
+      const count = mc?.actual_count || b.booked_count || 0
+      return {
+        'เลขจอง': b.case_number,
+        'เลขที่ใบวางบิล': getInvoiceNo(b),
+        'ลูกค้า': b.customers?.customer_name,
+        'วันที่': b.booking_date,
+        'จำนวนตรวจ': count,
+        'ยอดรับ': p?.amount_received || 0,
+        'สถานะ': p?.payment_status || 'ยังไม่ชำระ',
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Invoices')
+    XLSX.writeFile(wb, `invoices_${new Date().toISOString().slice(0,10)}.xlsx`)
+  }
+
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
@@ -54,19 +87,50 @@ export default function Invoices() {
       <Sidebar user={user} role={role} currentPath="/invoices" onLogout={logout} />
 
       <div className="flex-1 ml-56 p-6 print:hidden">
-        <div className="mb-6">
-          <p className="text-base font-medium text-gray-800">ใบวางบิล</p>
-          <p className="text-xs text-gray-400 mt-0.5">ออกใบวางบิลแต่ละ Order</p>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <p className="text-base font-medium text-gray-800">ใบวางบิล</p>
+            <p className="text-xs text-gray-400 mt-0.5">ออกใบวางบิลแต่ละ Order</p>
+          </div>
+          <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+            <IconDownload size={15} /> Export Excel
+          </button>
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
+          <div className="relative">
+            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
+            <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
+              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
+              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+          </div>
+          <div className="flex justify-between items-center pt-1">
+            <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
+            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo('') }}
+              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+          </div>
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
           <div className="grid grid-cols-5 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span><span>ยอดรับ</span><span></span>
           </div>
-          {bookings.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">ยังไม่มีรายการ</div>
+          {filtered.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
           ) : (
-            bookings.map((b) => {
+            filtered.map((b) => {
               const p = b.payments?.[0]
               return (
                 <div key={b.id} className="grid grid-cols-5 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
@@ -88,7 +152,6 @@ export default function Invoices() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 print:bg-white print:block">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto print:shadow-none print:rounded-none print:max-h-none">
             <div className="p-10">
-
               <div className="flex justify-between items-start pb-6 border-b-2 border-[#185FA5] mb-8">
                 <div>
                   <p className="text-2xl font-medium text-[#185FA5]">Txrx Service</p>
@@ -102,7 +165,6 @@ export default function Invoices() {
                   <p className="text-xs text-gray-400 mt-0.5">{today}</p>
                 </div>
               </div>
-
               <div className="flex gap-4 mb-8">
                 <div className="flex-1 bg-[#E6F1FB] rounded-xl p-4">
                   <p className="text-xs font-medium text-[#185FA5] mb-2">เรียกเก็บจาก</p>
@@ -131,7 +193,6 @@ export default function Invoices() {
                   </div>
                 </div>
               </div>
-
               <div className="rounded-xl overflow-hidden border border-gray-100 mb-6">
                 <div className="grid grid-cols-4 px-4 py-3 bg-[#185FA5] text-white text-xs font-medium">
                   <span className="col-span-2">รายการ</span>
@@ -153,16 +214,13 @@ export default function Invoices() {
                   <p className="text-right font-medium text-gray-800">฿{total.toLocaleString()}</p>
                 </div>
               </div>
-
               <div className="flex justify-end mb-8">
                 <div className="w-72 bg-gray-50 rounded-xl p-4 space-y-2">
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>ยอดรวมทั้งหมด</span>
-                    <span>฿{total.toLocaleString()}</span>
+                    <span>ยอดรวมทั้งหมด</span><span>฿{total.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>ยอดรับชำระแล้ว</span>
-                    <span className="text-green-600">฿{paid.toLocaleString()}</span>
+                    <span>ยอดรับชำระแล้ว</span><span className="text-green-600">฿{paid.toLocaleString()}</span>
                   </div>
                   <div className="border-t border-gray-200 pt-2 flex justify-between font-medium text-base">
                     <span className="text-gray-800">ยอดคงค้าง</span>
@@ -170,7 +228,6 @@ export default function Invoices() {
                   </div>
                 </div>
               </div>
-
               <div className="border-t border-gray-100 pt-4 flex justify-between items-center print:hidden">
                 <p className="text-xs text-gray-400">ขอบคุณที่ใช้บริการ Txrx Service</p>
                 <div className="flex gap-2">
@@ -180,7 +237,6 @@ export default function Invoices() {
                   </button>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
