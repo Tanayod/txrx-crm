@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload } from '@tabler/icons-react'
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload, IconCheck, IconClock, IconAlertTriangle } from '@tabler/icons-react'
 
 const provinces = ['กรุงเทพมหานคร','สมุทรสาคร','ชลบุรี','นนทบุรี','ปทุมธานี','ระยอง','ลพบุรี','เชียงใหม่','นครปฐม','สมุทรปราการ','พระนครศรีอยุธยา','ลำพูน','เพชรบูรณ์','อื่นๆ']
 
@@ -35,24 +35,21 @@ export default function Bookings() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<any>(emptyForm)
 
-  // Filters
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterShift, setFilterShift] = useState('')
   const [filterService, setFilterService] = useState('')
   const [filterLocation, setFilterLocation] = useState('')
-  const [filterSim, setFilterSim] = useState('')
+  const [filterPayment, setFilterPayment] = useState('')
 
   if (ready && !loaded) { fetchAll(); setLoaded(true) }
 
-  async function fetchAll() {
-    fetchBookings(); fetchCustomers(); fetchLocations()
-  }
+  async function fetchAll() { fetchBookings(); fetchCustomers(); fetchLocations() }
 
   async function fetchBookings() {
     const { data } = await supabase
       .from('bookings')
-      .select('*, customers(customer_name)')
+      .select('*, customers(customer_name), medical_cases(*), payments(*)')
       .order('booking_date', { ascending: false })
     if (data) setBookings(data)
   }
@@ -73,9 +70,7 @@ export default function Bookings() {
     return `TXR-${d}-${rand}`
   }
 
-  const openCreate = () => {
-    setEditingId(null); setForm(emptyForm); setCustomerSearch(''); setShowModal(true)
-  }
+  const openCreate = () => { setEditingId(null); setForm(emptyForm); setCustomerSearch(''); setShowModal(true) }
 
   const openEdit = (b: any) => {
     setEditingId(b.id)
@@ -115,6 +110,26 @@ export default function Bookings() {
     setDeleteId(null); fetchBookings()
   }
 
+  const getPaymentStatus = (b: any) => {
+    const p = b.payments?.[0]
+    if (!p) return { label: 'ยังไม่ชำระ', color: 'bg-gray-100 text-gray-500' }
+    const map: any = {
+      'ชำระเงินแล้ว': 'bg-green-50 text-green-600',
+      'ยังไม่ชำระ': 'bg-gray-100 text-gray-500',
+      'ค้างชำระ': 'bg-red-50 text-red-600',
+      'เครดิต': 'bg-amber-50 text-amber-600',
+    }
+    return { label: p.payment_status, color: map[p.payment_status] || 'bg-gray-100 text-gray-500' }
+  }
+
+  const getMedicalStatus = (b: any) => {
+    const mc = b.medical_cases?.[0]
+    if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-400', icon: IconClock }
+    if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck }
+    if (mc.cert_deadline && new Date() > new Date(mc.cert_deadline)) return { label: 'เกิน 3 วัน!', color: 'bg-red-50 text-red-600', icon: IconAlertTriangle }
+    return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock }
+  }
+
   const filteredCustomers = customers.filter(c =>
     c.customer_name?.includes(customerSearch) || c.line_name?.includes(customerSearch)
   )
@@ -126,37 +141,32 @@ export default function Bookings() {
     if (filterShift && b.shift !== filterShift) return false
     if (filterService && b.service_type !== filterService) return false
     if (filterLocation && b.location_name !== filterLocation) return false
-    if (filterSim && b.sim_true_status !== filterSim) return false
+    if (filterPayment && getPaymentStatus(b).label !== filterPayment) return false
     return true
   })
 
   const exportExcel = () => {
-    const rows = filtered.map(b => ({
-      'เลขจอง': b.case_number,
-      'ลูกค้า': b.customers?.customer_name,
-      'วันที่': b.booking_date,
-      'กะ': b.shift,
-      'ประเภทบริการ': b.service_type,
-      'จังหวัด': b.province,
-      'สถานที่': b.location_name,
-      'สัญชาติ': b.nationality,
-      'จำนวนจอง': b.booked_count,
-      'ซิมทรู': b.sim_true_status,
-      'หมายเหตุ': b.admin_note,
-    }))
+    const rows = filtered.map(b => {
+      const mc = b.medical_cases?.[0]
+      const p = b.payments?.[0]
+      return {
+        'เลขจอง': b.case_number,
+        'ลูกค้า': b.customers?.customer_name,
+        'วันที่': b.booking_date,
+        'กะ': b.shift,
+        'ประเภทบริการ': b.service_type,
+        'สถานที่': b.location_name,
+        'จำนวนจอง': b.booked_count,
+        'จำนวนตรวจจริง': mc?.actual_count || '',
+        'สถานะเงิน': p?.payment_status || 'ยังไม่ชำระ',
+        'สถานะใบแพทย์': getMedicalStatus(b).label,
+        'หมายเหตุ': b.admin_note,
+      }
+    })
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Bookings')
     XLSX.writeFile(wb, `bookings_${new Date().toISOString().slice(0,10)}.xlsx`)
-  }
-
-  const statusColor: any = {
-    'อนุญาต': 'bg-green-50 text-green-600',
-    'ไม่อนุญาต': 'bg-red-50 text-red-600',
-    'รอคำตอบลูกค้า': 'bg-amber-50 text-amber-600',
-    'แจ้งหรือแล้ว': 'bg-blue-50 text-blue-600',
-    'คำกล่าวประสาน': 'bg-purple-50 text-purple-600',
-    'walk-in คลินิก': 'bg-gray-100 text-gray-500',
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
@@ -180,7 +190,6 @@ export default function Bookings() {
           </div>
         </div>
 
-        {/* Search + Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
           <div className="relative">
             <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
@@ -225,46 +234,54 @@ export default function Bookings() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">ซิมทรู</label>
-              <select value={filterSim} onChange={(e) => setFilterSim(e.target.value)}
+              <label className="text-xs text-gray-400 mb-1 block">สถานะการชำระ</label>
+              <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                 <option value="">ทั้งหมด</option>
-                <option>แจ้งหรือแล้ว</option><option>คำกล่าวประสาน</option>
-                <option>รอคำตอบลูกค้า</option><option>อนุญาต</option>
-                <option>ไม่อนุญาต</option><option>walk-in คลินิก</option>
+                <option>ชำระเงินแล้ว</option><option>ยังไม่ชำระ</option>
+                <option>ค้างชำระ</option><option>เครดิต</option>
               </select>
             </div>
           </div>
           <div className="flex justify-between items-center pt-1">
             <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterShift(''); setFilterService(''); setFilterLocation(''); setFilterSim('') }}
+            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterShift(''); setFilterService(''); setFilterLocation(''); setFilterPayment('') }}
               className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-8 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+          <div className="grid grid-cols-9 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
-            <span>สถานที่</span><span>จำนวนจอง</span><span>ซิมทรู</span><span>กะ</span><span></span>
+            <span>สถานที่</span><span>จอง</span><span>ตรวจจริง</span>
+            <span>สถานะเงิน</span><span>ใบแพทย์</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
           ) : (
-            filtered.map((b) => (
-              <div key={b.id} className="grid grid-cols-8 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
-                <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
-                <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
-                <span className="text-gray-500">{b.booking_date}</span>
-                <span className="text-gray-500 text-xs">{b.location_name || '-'}</span>
-                <span className="text-gray-700">{b.booked_count?.toLocaleString()} คน</span>
-                <span><span className={`text-xs px-2 py-0.5 rounded-full ${statusColor[b.sim_true_status] || 'bg-gray-100 text-gray-500'}`}>{b.sim_true_status}</span></span>
-                <span><span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">{b.shift}</span></span>
-                <span className="flex gap-2 justify-end">
-                  <button onClick={() => openEdit(b)} className="text-gray-400 hover:text-blue-500"><IconEdit size={15} /></button>
-                  <button onClick={() => setDeleteId(b.id)} className="text-gray-400 hover:text-red-500"><IconTrash size={15} /></button>
-                </span>
-              </div>
-            ))
+            filtered.map((b) => {
+              const payStatus = getPaymentStatus(b)
+              const medStatus = getMedicalStatus(b)
+              const mc = b.medical_cases?.[0]
+              return (
+                <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+                  <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
+                  <span className="font-medium text-gray-700 text-xs">{b.customers?.customer_name}</span>
+                  <span className="text-gray-500 text-xs">{b.booking_date}</span>
+                  <span className="text-gray-500 text-xs">{b.location_name || '-'}</span>
+                  <span className="text-gray-700 text-xs">{b.booked_count?.toLocaleString()}</span>
+                  <span className="text-[#185FA5] font-medium text-xs">{mc?.actual_count?.toLocaleString() || '-'}</span>
+                  <span><span className={`text-xs px-2 py-0.5 rounded-full ${payStatus.color}`}>{payStatus.label}</span></span>
+                  <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${medStatus.color}`}>
+                    <medStatus.icon size={10} />{medStatus.label}
+                  </span></span>
+                  <span className="flex gap-2 justify-end">
+                    <button onClick={() => openEdit(b)} className="text-gray-400 hover:text-blue-500"><IconEdit size={15} /></button>
+                    <button onClick={() => setDeleteId(b.id)} className="text-gray-400 hover:text-red-500"><IconTrash size={15} /></button>
+                  </span>
+                </div>
+              )
+            })
           )}
         </div>
       </div>
