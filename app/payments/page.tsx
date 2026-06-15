@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconUpload, IconCheck, IconSearch, IconDownload, IconPlus, IconX } from '@tabler/icons-react'
+import { IconUpload, IconCheck, IconSearch, IconDownload, IconPlus, IconX, IconMicroscope } from '@tabler/icons-react'
 
 export default function Payments() {
   const { user, role, ready, logout } = useAuth('/payments')
@@ -22,7 +22,7 @@ export default function Payments() {
     worker_count: 0, price_per_worker: 0,
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
-  const [splitSource, setSplitSource] = useState({ total: 0, method: 'transfer', note: '' })
+  const [splitSource, setSplitSource] = useState({ method: 'transfer' })
 
   const [search, setSearch] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
@@ -35,9 +35,20 @@ export default function Payments() {
   async function fetchBookings() {
     const { data } = await supabase
       .from('bookings')
-      .select('*, customers(customer_name, type, credit_limit, credit_balance), payments(*), medical_cases(actual_count)')
+      .select('*, customers(customer_name, type, credit_limit, credit_balance), payments(*), medical_cases(actual_count), special_exams(total_amount)')
       .order('booking_date', { ascending: false })
     if (data) setBookings(data)
+  }
+
+  const getSpecialTotal = (b: any) => {
+    return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
+  }
+
+  const getGrandTotal = (b: any) => {
+    const p = b.payments?.[0]
+    const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
+    const specialTotal = getSpecialTotal(b)
+    return workerTotal + specialTotal
   }
 
   const handleOpenModal = (booking: any) => {
@@ -55,27 +66,26 @@ export default function Payments() {
     setShowModal(true)
   }
 
-  const totalAmount = form.worker_count * form.price_per_worker
+  const normalTotal = form.worker_count * form.price_per_worker
+  const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
+  const grandTotalSelected = normalTotal + specialAmountSelected
 
   const handleSave = async () => {
     const p = selected?.payments?.[0]
     const payload = {
-      amount_received: form.amount_received || totalAmount,
+      amount_received: form.amount_received || grandTotalSelected,
       method: form.method,
       payment_status: form.payment_status,
       invoice_no: form.invoice_no,
       worker_count: form.worker_count,
       price_per_worker: form.price_per_worker,
-      total_amount: totalAmount,
+      total_amount: grandTotalSelected,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
     }
     if (p?.id) {
       await supabase.from('payments').update(payload).eq('id', p.id)
     } else {
       await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }])
-    }
-    if (selected.customers?.type === 'credit' && form.payment_status === 'เครดิต') {
-      await supabase.from('customers').update({ credit_balance: (selected.customers.credit_balance || 0) + (form.amount_received || totalAmount) }).eq('id', selected.customer_id)
     }
     fetchBookings(); setShowModal(false)
   }
@@ -95,7 +105,6 @@ export default function Payments() {
     setUploading(false)
   }
 
-  // Split payment
   const openSplitModal = () => {
     const unpaidBookings = bookings.filter(b => {
       const p = b.payments?.[0]
@@ -106,6 +115,7 @@ export default function Payments() {
       case_number: b.case_number,
       customer_name: b.customers?.customer_name,
       booking_date: b.booking_date,
+      grand_total: getGrandTotal(b),
       amount: 0,
       selected: false,
     })))
@@ -113,8 +123,8 @@ export default function Payments() {
   }
 
   const handleSplitSave = async () => {
-    const selected_items = splitPayments.filter(s => s.selected && s.amount > 0)
-    for (const item of selected_items) {
+    const selectedItems = splitPayments.filter(s => s.selected && s.amount > 0)
+    for (const item of selectedItems) {
       const booking = bookings.find(b => b.id === item.booking_id)
       const p = booking?.payments?.[0]
       const payload = {
@@ -163,17 +173,20 @@ export default function Payments() {
     const rows = filtered.map(b => {
       const p = b.payments?.[0]
       const mc = b.medical_cases?.[0]
+      const specialAmt = getSpecialTotal(b)
+      const grandTotal = getGrandTotal(b)
       return {
         'เลขจอง': b.case_number,
         'ลูกค้า': b.customers?.customer_name,
         'วันที่': b.booking_date,
         'จำนวนแรงงาน': p?.worker_count || mc?.actual_count || 0,
         'ราคา/คน': p?.price_per_worker || 0,
-        'ยอดรวม': p?.total_amount || 0,
+        'ยอดปกติ': (p?.worker_count || 0) * (p?.price_per_worker || 0),
+        'ยอดตรวจพิเศษ': specialAmt,
+        'ยอดรวม': grandTotal,
         'ยอดรับ': p?.amount_received || 0,
         'วิธีชำระ': p?.method || '',
         'สถานะ': getPaymentStatus(b).label,
-        'เลขที่ใบวางบิล': p?.invoice_no || '',
       }
     })
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -252,10 +265,10 @@ export default function Payments() {
 
         {/* Table */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-8 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-9 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
-            <span>แรงงาน</span><span>ราคา/คน</span><span>ยอดรวม</span>
-            <span>สถานะ</span><span></span>
+            <span>แรงงาน</span><span>ราคา/คน</span><span>ยอดปกติ</span>
+            <span>ตรวจพิเศษ</span><span>สถานะ</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -267,9 +280,11 @@ export default function Payments() {
             const p = b.payments?.[0]
             const mc = b.medical_cases?.[0]
             const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
-            const totalAmt = p?.total_amount || (p?.worker_count && p?.price_per_worker ? p.worker_count * p.price_per_worker : 0)
+            const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
+            const specialAmt = getSpecialTotal(b)
+            const grandTotal = getGrandTotal(b)
             return (
-              <div key={b.id} className="grid grid-cols-8 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
+              <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
                 <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                 <div>
                   <p className="font-medium text-gray-800 text-xs">{b.customers?.customer_name}</p>
@@ -278,9 +293,14 @@ export default function Payments() {
                 <span className="text-gray-500 text-xs">{b.booking_date}</span>
                 <span className="text-gray-700 text-xs">{workerCount > 0 ? `${workerCount} คน` : '-'}</span>
                 <span className="text-gray-700 text-xs">{p?.price_per_worker > 0 ? `฿${p.price_per_worker}` : '-'}</span>
+                <span className="text-gray-700 text-xs">{normalAmt > 0 ? `฿${normalAmt.toLocaleString()}` : '-'}</span>
                 <div>
-                  <p className="text-gray-800 font-medium text-xs">{totalAmt > 0 ? `฿${totalAmt.toLocaleString()}` : '-'}</p>
-                  {p?.is_verified && <p className="text-xs text-green-500 flex items-center gap-0.5"><IconCheck size={10}/>สลิปแล้ว</p>}
+                  {specialAmt > 0 ? (
+                    <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
+                      <IconMicroscope size={10}/>฿{specialAmt.toLocaleString()}
+                    </span>
+                  ) : <span className="text-xs text-gray-300">-</span>}
+                  {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString()}</p>}
                 </div>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
                 <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก</button>
@@ -326,9 +346,21 @@ export default function Payments() {
                       className="w-full border border-blue-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
                   </div>
                 </div>
-                <div className="flex justify-between items-center bg-white rounded-lg px-3 py-2.5 border border-blue-200">
-                  <span className="text-sm text-gray-600">ยอดรวม</span>
-                  <span className="text-lg font-bold text-[#185FA5]">฿{totalAmount.toLocaleString()}</span>
+                <div className="space-y-1.5 bg-white rounded-lg p-3 border border-blue-200">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>ยอดตรวจสุขภาพปกติ</span>
+                    <span className="font-medium text-gray-700">฿{normalTotal.toLocaleString()}</span>
+                  </div>
+                  {specialAmountSelected > 0 && (
+                    <div className="flex justify-between text-xs text-purple-600">
+                      <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ</span>
+                      <span className="font-medium">฿{specialAmountSelected.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                    <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งหมด</span>
+                    <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
 
@@ -336,7 +368,7 @@ export default function Payments() {
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ยอดรับชำระจริง (บาท)</label>
                 <input type="text" inputMode="numeric" value={form.amount_received || ''}
                   onChange={(e) => setForm({...form, amount_received: Number(e.target.value.replace(/\D/g,''))})}
-                  placeholder={`${totalAmount.toLocaleString()} (ปล่อยว่างถ้าเท่ากับยอดรวม)`}
+                  placeholder={`${grandTotalSelected.toLocaleString()} (ปล่อยว่างถ้าเท่ากับยอดรวม)`}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
 
@@ -404,7 +436,6 @@ export default function Payments() {
               </div>
               <button onClick={() => setShowSplitModal(false)} className="text-gray-400 hover:text-gray-600"><IconX size={20}/></button>
             </div>
-
             <div className="p-4 border-b border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">วิธีชำระ</label>
@@ -422,15 +453,15 @@ export default function Payments() {
                 </div>
               </div>
             </div>
-
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-5 gap-2 px-3 py-2 bg-gray-50 rounded-lg text-xs font-semibold text-gray-500 mb-2">
+              <div className="grid grid-cols-6 gap-2 px-3 py-2 bg-gray-50 rounded-lg text-xs font-semibold text-gray-500 mb-2">
                 <span className="col-span-2">ลูกค้า / เลขจอง</span>
                 <span>วันที่</span>
+                <span>ยอดรวม</span>
                 <span className="col-span-2">ยอดที่ตัด (บาท)</span>
               </div>
               {splitPayments.map((sp, i) => (
-                <div key={sp.booking_id} className={`grid grid-cols-5 gap-2 px-3 py-2.5 rounded-lg mb-1.5 items-center border transition-colors ${sp.selected ? 'border-blue-200 bg-blue-50' : 'border-gray-100 bg-white'}`}>
+                <div key={sp.booking_id} className={`grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg mb-1.5 items-center border transition-colors ${sp.selected ? 'border-blue-200 bg-blue-50' : 'border-gray-100 bg-white'}`}>
                   <div className="col-span-2 flex items-center gap-2">
                     <input type="checkbox" checked={sp.selected}
                       onChange={(e) => {
@@ -438,13 +469,14 @@ export default function Payments() {
                         updated[i].selected = e.target.checked
                         setSplitPayments(updated)
                       }}
-                      className="rounded border-gray-300 text-[#185FA5]"/>
+                      className="rounded border-gray-300"/>
                     <div>
                       <p className="text-xs font-medium text-gray-800">{sp.customer_name}</p>
                       <p className="text-xs text-gray-400 font-mono">{sp.case_number}</p>
                     </div>
                   </div>
                   <span className="text-xs text-gray-500">{sp.booking_date}</span>
+                  <span className="text-xs font-medium text-gray-700">{sp.grand_total > 0 ? `฿${sp.grand_total.toLocaleString()}` : '-'}</span>
                   <div className="col-span-2">
                     <input type="text" inputMode="numeric"
                       value={sp.amount || ''}
@@ -460,13 +492,12 @@ export default function Payments() {
                 </div>
               ))}
             </div>
-
             <div className="p-4 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setShowSplitModal(false)} className="px-5 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSplitSave}
                 disabled={splitPayments.filter(s => s.selected && s.amount > 0).length === 0}
                 className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50 font-medium transition-colors">
-                บันทึกการตัดชำระ ({splitPayments.filter(s => s.selected).length} รายการ)
+                บันทึก ({splitPayments.filter(s => s.selected).length} รายการ)
               </button>
             </div>
           </div>

@@ -13,6 +13,8 @@ export default function SpecialExams() {
   const [exams, setExams] = useState<any[]>([])
   const [examTypes, setExamTypes] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
+  const [customerBookings, setCustomerBookings] = useState<any[]>([])
   const [loaded, setLoaded] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -27,6 +29,8 @@ export default function SpecialExams() {
 
   const [form, setForm] = useState({
     customer_id: '', customer_name_display: '',
+    booking_id: '',
+    location_id: '', location_name: '',
     exam_date: new Date().toISOString().slice(0,10),
     total_workers: 0, note: '',
     items: [] as any[]
@@ -35,22 +39,20 @@ export default function SpecialExams() {
   if (ready && !loaded) { fetchAll(); setLoaded(true) }
 
   async function fetchAll() {
-    fetchExams(); fetchExamTypes(); fetchCustomers()
+    fetchExams(); fetchExamTypes(); fetchCustomers(); fetchLocations()
   }
 
   async function fetchExams() {
     const { data } = await supabase
       .from('special_exams')
-      .select('*, customers(customer_name), special_exam_items(*)')
+      .select('*, customers(customer_name), bookings(case_number, booking_date, location_name), special_exam_items(*)')
       .order('exam_date', { ascending: false })
     if (data) setExams(data)
   }
 
   async function fetchExamTypes() {
     const { data } = await supabase.from('exam_types').select('*').eq('is_active', true).order('sort_order')
-    if (data) {
-      setExamTypes(data)
-    }
+    if (data) setExamTypes(data)
   }
 
   async function fetchCustomers() {
@@ -58,15 +60,32 @@ export default function SpecialExams() {
     if (data) setCustomers(data)
   }
 
+  async function fetchLocations() {
+    const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('name')
+    if (data) setLocations(data)
+  }
+
+  async function fetchCustomerBookings(customerId: string) {
+    const { data } = await supabase
+      .from('bookings')
+      .select('id, case_number, booking_date, location_name, shift')
+      .eq('customer_id', customerId)
+      .order('booking_date', { ascending: false })
+      .limit(20)
+    if (data) setCustomerBookings(data)
+  }
+
   const openCreate = () => {
     setEditingId(null)
     setForm({
       customer_id: '', customer_name_display: '',
+      booking_id: '', location_id: '', location_name: '',
       exam_date: new Date().toISOString().slice(0,10),
       total_workers: 0, note: '',
       items: examTypes.map(t => ({ exam_type_id: t.id, exam_name: t.name, price_per_unit: t.price, quantity: 0, subtotal: 0 }))
     })
     setCustomerSearch('')
+    setCustomerBookings([])
     setShowModal(true)
   }
 
@@ -85,13 +104,28 @@ export default function SpecialExams() {
     setForm({
       customer_id: exam.customer_id,
       customer_name_display: exam.customers?.customer_name || '',
+      booking_id: exam.booking_id || '',
+      location_id: '',
+      location_name: exam.location_name || exam.bookings?.location_name || '',
       exam_date: exam.exam_date,
       total_workers: exam.total_workers || 0,
       note: exam.note || '',
       items,
     })
+    if (exam.customer_id) fetchCustomerBookings(exam.customer_id)
     setCustomerSearch('')
     setShowModal(true)
+  }
+
+  const handleSelectCustomer = (c: any) => {
+    setForm({...form, customer_id: c.id, customer_name_display: c.customer_name, booking_id: ''})
+    setCustomerSearch('')
+    setShowCustomerDropdown(false)
+    fetchCustomerBookings(c.id)
+  }
+
+  const handleSelectBooking = (b: any) => {
+    setForm({...form, booking_id: b.id, location_name: b.location_name || form.location_name, exam_date: b.booking_date})
   }
 
   const updateItem = (idx: number, qty: number) => {
@@ -116,6 +150,8 @@ export default function SpecialExams() {
 
     const payload = {
       customer_id: form.customer_id,
+      booking_id: form.booking_id || null,
+      location_name: form.location_name,
       exam_date: form.exam_date,
       total_workers: form.total_workers,
       total_amount: totalAmount,
@@ -170,14 +206,16 @@ export default function SpecialExams() {
   const exportExcel = () => {
     const rows: any[] = []
     filtered.forEach(e => {
-      const items = e.special_exam_items || []
+      const items = e.special_exam_items?.filter((i:any) => i.quantity > 0) || []
       if (items.length === 0) {
-        rows.push({ 'วันที่': e.exam_date, 'ลูกค้า': e.customers?.customer_name, 'จำนวนแรงงาน': e.total_workers, 'รายการ': '', 'จำนวน': '', 'ราคา/คน': '', 'ยอด': '', 'รวม': e.total_amount })
+        rows.push({ 'วันที่': e.exam_date, 'ลูกค้า': e.customers?.customer_name, 'สถานที่': e.location_name || '', 'เลขจอง': e.bookings?.case_number || '', 'จำนวนแรงงาน': e.total_workers, 'รายการ': '', 'จำนวน': '', 'ราคา/คน': '', 'ยอด': '', 'รวม': e.total_amount })
       } else {
         items.forEach((item: any, idx: number) => {
           rows.push({
             'วันที่': idx === 0 ? e.exam_date : '',
             'ลูกค้า': idx === 0 ? e.customers?.customer_name : '',
+            'สถานที่': idx === 0 ? (e.location_name || '') : '',
+            'เลขจอง': idx === 0 ? (e.bookings?.case_number || '') : '',
             'จำนวนแรงงาน': idx === 0 ? e.total_workers : '',
             'รายการ': item.exam_name,
             'จำนวน': item.quantity,
@@ -243,9 +281,10 @@ export default function SpecialExams() {
 
         {/* Table */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-7 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-8 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>วันที่</span><span className="col-span-2">ลูกค้า</span>
-            <span>แรงงาน</span><span className="col-span-2">รายการตรวจ</span><span>ยอดรวม</span>
+            <span>เลขจอง</span><span>สถานที่</span><span>แรงงาน</span>
+            <span>รายการตรวจ</span><span>ยอดรวม</span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -255,17 +294,19 @@ export default function SpecialExams() {
           ) : filtered.map(e => {
             const items = e.special_exam_items?.filter((i: any) => i.quantity > 0) || []
             return (
-              <div key={e.id} className="grid grid-cols-7 gap-2 px-5 py-3.5 border-b border-gray-50 hover:bg-blue-50/30 transition-colors items-start">
-                <span className="text-xs text-gray-500 pt-0.5">{e.exam_date}</span>
-                <span className="col-span-2 font-medium text-gray-800 text-xs pt-0.5">{e.customers?.customer_name}</span>
-                <span className="text-xs text-gray-600 pt-0.5">{e.total_workers > 0 ? `${e.total_workers} คน` : '-'}</span>
-                <div className="col-span-2 flex flex-wrap gap-1">
-                  {items.slice(0,4).map((item: any) => (
+              <div key={e.id} className="grid grid-cols-8 gap-2 px-5 py-3.5 border-b border-gray-50 hover:bg-blue-50/30 transition-colors items-center">
+                <span className="text-xs text-gray-500">{e.exam_date}</span>
+                <span className="col-span-2 font-medium text-gray-800 text-xs">{e.customers?.customer_name}</span>
+                <span className="text-xs text-gray-400 font-mono">{e.bookings?.case_number || '-'}</span>
+                <span className="text-xs text-gray-500 truncate">{e.location_name || '-'}</span>
+                <span className="text-xs text-gray-600">{e.total_workers > 0 ? `${e.total_workers} คน` : '-'}</span>
+                <div className="flex flex-wrap gap-1">
+                  {items.slice(0,2).map((item: any) => (
                     <span key={item.id} className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-md">
                       {item.exam_name} ×{item.quantity}
                     </span>
                   ))}
-                  {items.length > 4 && <span className="text-xs text-gray-400">+{items.length-4} อื่นๆ</span>}
+                  {items.length > 2 && <span className="text-xs text-gray-400">+{items.length-2}</span>}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-gray-800">฿{e.total_amount?.toLocaleString()}</span>
@@ -290,30 +331,69 @@ export default function SpecialExams() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {/* ลูกค้า + วันที่ */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">ลูกค้า *</label>
-                  <input value={form.customer_name_display || customerSearch}
-                    onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); setForm({...form, customer_id:'', customer_name_display:''}) }}
-                    onFocus={() => setShowCustomerDropdown(true)}
-                    placeholder="พิมพ์ค้นหา..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
-                  {showCustomerDropdown && filteredCustomers.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-10 max-h-40 overflow-y-auto mt-1">
-                      {filteredCustomers.map(c => (
-                        <div key={c.id} onClick={() => { setForm({...form, customer_id: c.id, customer_name_display: c.customer_name}); setCustomerSearch(''); setShowCustomerDropdown(false) }}
-                          className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer">
-                          {c.customer_name}
+
+              {/* ลูกค้า */}
+              <div className="relative">
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">ลูกค้า *</label>
+                <input value={form.customer_name_display || customerSearch}
+                  onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); setForm({...form, customer_id:'', customer_name_display:'', booking_id:''}) }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  placeholder="พิมพ์ค้นหาลูกค้า..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                {showCustomerDropdown && filteredCustomers.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-10 max-h-40 overflow-y-auto mt-1">
+                    {filteredCustomers.map(c => (
+                      <div key={c.id} onClick={() => handleSelectCustomer(c)}
+                        className="px-3 py-2.5 text-sm hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                        <span className="font-medium text-gray-800">{c.customer_name}</span>
+                        {c.line_name && <span className="text-gray-400 ml-2 text-xs">{c.line_name}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* เลือก Booking ที่ผูก */}
+              {form.customer_id && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">ผูกกับการจอง (ถ้ามี)</label>
+                  {customerBookings.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">ไม่พบรายการจองของลูกค้านี้</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden max-h-36 overflow-y-auto">
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setForm({...form, booking_id: ''})}>
+                        <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${!form.booking_id ? 'border-[#185FA5] bg-[#185FA5]' : 'border-gray-300'}`}/>
+                        <span className="text-xs text-gray-500">ไม่ผูกกับการจอง</span>
+                      </div>
+                      {customerBookings.map(b => (
+                        <div key={b.id} onClick={() => handleSelectBooking(b)}
+                          className={`flex items-center gap-2 px-3 py-2 border-b border-gray-50 cursor-pointer hover:bg-blue-50 ${form.booking_id === b.id ? 'bg-blue-50' : ''}`}>
+                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${form.booking_id === b.id ? 'border-[#185FA5] bg-[#185FA5]' : 'border-gray-300'}`}/>
+                          <div>
+                            <span className="text-xs font-medium text-gray-700 font-mono">{b.case_number}</span>
+                            <span className="text-xs text-gray-400 ml-2">{b.booking_date} · {b.location_name || '-'} · {b.shift}</span>
+                          </div>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วันที่ตรวจ *</label>
                   <input type="date" value={form.exam_date} onChange={(e) => setForm({...form, exam_date: e.target.value})}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">สาขา / คลินิก</label>
+                  <select value={form.location_name} onChange={(e) => setForm({...form, location_name: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">เลือกสาขา</option>
+                    {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+                  </select>
                 </div>
               </div>
 
@@ -397,7 +477,8 @@ export default function SpecialExams() {
               ))}
             </div>
             <div className="p-4 border-t border-gray-100 flex justify-end">
-              <button onClick={() => setShowSettingsModal(false)} className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] font-medium">เสร็จสิ้น</button>
+              <button onClick={() => { setShowSettingsModal(false); fetchExamTypes() }}
+                className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] font-medium">เสร็จสิ้น</button>
             </div>
           </div>
         </div>
