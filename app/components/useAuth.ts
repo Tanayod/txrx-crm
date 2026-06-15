@@ -19,6 +19,8 @@ const PAGE_ROLES: any = {
   '/invoices': ['admin', 'finance'],
   '/notifications': ['admin', 'finance'],
   '/users': ['admin'],
+  '/special-exams': ['admin', 'doctor', 'finance'],
+  '/daily-report': ['admin', 'finance'],
 }
 
 export function useAuth(currentPage: string) {

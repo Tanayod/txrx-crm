@@ -164,21 +164,19 @@ export default function Dashboard() {
       renew: renewList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5)
     })
 
-    // Aging certs — booked - actual สะสมทั้งปี
-    const thisYear = `${today.getFullYear()}-01-01`
-    const { data: yearBookings } = await supabase
-      .from('bookings')
-      .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count)')
-      .gte('booking_date', thisYear)
-      .lte('booking_date', todayStr)
+    // ✅ Aging certs — นับจาก medical_cases ที่ cert_status = 'รอส่ง' เท่านั้น
+    const { data: yearMedical } = await supabase
+      .from('medical_cases')
+      .select('*, bookings(case_number, booking_date, booked_count, customers(customer_name))')
+      .eq('cert_status', 'รอส่ง')
 
-    const agingList = (yearBookings || [])
-      .map(b => ({
-        case_number: b.case_number,
-        customer_name: (b.customers as any)?.customer_name,
-        booking_date: b.booking_date,
-        pending: Math.max((b.booked_count || 0) - ((b.medical_cases as any)?.[0]?.actual_count || 0), 0),
-        daysOver: Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
+    const agingList = (yearMedical || [])
+      .map(mc => ({
+        case_number: (mc.bookings as any)?.case_number,
+        customer_name: (mc.bookings as any)?.customers?.customer_name,
+        booking_date: (mc.bookings as any)?.booking_date,
+        pending: Math.max(((mc.bookings as any)?.booked_count || 0) - (mc.actual_count || 0), 0),
+        daysOver: Math.floor((today.getTime() - new Date((mc.bookings as any)?.booking_date || todayStr).getTime()) / 86400000)
       }))
       .filter(b => b.pending > 0)
       .sort((a, b) => b.pending - a.pending)
@@ -233,7 +231,6 @@ export default function Dashboard() {
       <Sidebar user={user} role={role} currentPath="/dashboard" onLogout={logout} />
       <div className="flex-1 ml-56 p-6 overflow-auto">
 
-        {/* Header */}
         <div className="flex justify-between items-center mb-5">
           <div>
             <p className="text-base font-semibold text-gray-800">Dashboard</p>
@@ -258,7 +255,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPI Row 1 — DTD / WTD / MTD */}
         <div className="grid grid-cols-3 gap-3 mb-3">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-3">Day to Date</p>
@@ -301,7 +297,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPI Row 2 */}
         <div className="grid grid-cols-5 gap-3 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Utilization</p>
@@ -328,7 +323,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Charts Row */}
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-5">📊 Peak Day Analysis</p>
@@ -384,15 +378,13 @@ export default function Dashboard() {
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/medical'}>
                 <p className="text-xs text-amber-600 font-semibold mb-0.5">ค้างใบแพทย์</p>
                 <p className="text-2xl font-bold text-amber-500">{kpi.overdueCerts.toLocaleString()}</p>
-                <p className="text-xs text-amber-400">ใบ · สะสมปีนี้</p>
+                <p className="text-xs text-amber-400">ใบ · รอส่ง</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Bottom Row */}
         <div className="grid grid-cols-3 gap-4">
-          {/* Top Customers */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">👥 Top Customers</p>
@@ -417,11 +409,10 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Aging Certs */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">⚠️ Aging ใบแพทย์</p>
-              <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">สะสม {kpi.overdueCerts.toLocaleString()} ใบ</span>
+              <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">รอส่ง {kpi.overdueCerts.toLocaleString()} ใบ</span>
             </div>
             <div className="space-y-2">
               {agingCerts.length === 0 && !loading && (
@@ -452,7 +443,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Retention */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">💤 Retention (90 วัน)</p>
             <div className="mb-3">
