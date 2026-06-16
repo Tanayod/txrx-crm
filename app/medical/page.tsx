@@ -15,7 +15,7 @@ export default function Medical() {
   const [showModal, setShowModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [certificates, setCertificates] = useState<any[]>([])
-  const [form, setForm] = useState({ actual_count: 0, doctor_note: '', exam_date: '' })
+  const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '' })
   const [loaded, setLoaded] = useState(false)
 
   const [search, setSearch] = useState('')
@@ -46,7 +46,7 @@ export default function Medical() {
   const handleOpenModal = async (booking: any) => {
     setSelected(booking)
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
-    setForm({ actual_count: mc?.actual_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date })
+    setForm({ actual_count: mc?.actual_count || 0, cert_count: mc?.cert_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date })
     if (mc?.id) await fetchCertificates(mc.id)
     else setCertificates([])
     setShowModal(true)
@@ -58,9 +58,9 @@ export default function Medical() {
     deadline.setDate(deadline.getDate() + 3)
     const deadlineStr = deadline.toISOString().slice(0, 10)
     if (mc?.id) {
-      await supabase.from('medical_cases').update({ actual_count: form.actual_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr }).eq('id', mc.id)
+      await supabase.from('medical_cases').update({ actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr }).eq('id', mc.id)
     } else {
-      await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง' }])
+      await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง' }])
     }
     fetchCases(); setShowModal(false)
   }
@@ -271,6 +271,20 @@ export default function Medical() {
                   <input type="text" inputMode="numeric" value={form.actual_count || ''}
                     onChange={(e) => setForm({...form, actual_count: Number(e.target.value.replace(/\D/g,''))})}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">จำนวนใบแพทย์</label>
+                  <input type="text" inputMode="numeric" value={form.cert_count || ''}
+                    onChange={(e) => setForm({...form, cert_count: Number(e.target.value.replace(/\D/g,''))})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                </div>
+                <div className="flex items-end pb-2">
+                  <button type="button" onClick={() => setForm({...form, cert_count: form.actual_count})}
+                    className="text-xs text-[#185FA5] hover:underline">
+                    คัดลอกจากตรวจจริง
+                  </button>
                 </div>
               </div>
               <div>
