@@ -233,7 +233,17 @@ export default function Medical() {
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                   <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
                   <span className="text-gray-500">{mc?.exam_date || b.booking_date}</span>
-                  <span className="text-gray-500 text-xs truncate">{b.location_name || '-'}</span>
+                  <span className="text-gray-500 text-xs truncate flex items-center gap-1">
+                    {b.location_name || '-'}
+                    {b.location_url && (
+                      <a href={b.location_url} target="_blank" rel="noreferrer"
+                        className="text-[#185FA5] hover:text-blue-700 flex-shrink-0" title="เปิด Google Map">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                        </svg>
+                      </a>
+                    )}
+                  </span>
                   <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
                   <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${status.color}`}><status.icon size={11} />{status.label}</span></span>
                   <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right">บันทึก / แนบไฟล์</button>
