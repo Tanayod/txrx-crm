@@ -83,7 +83,8 @@ export default function Medical() {
     setUploading(true)
     const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบไฟล์'); setUploading(false); return }
-    const fileName = `${mc.id}/${Date.now()}_${file.name}`
+    const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+const fileName = `${mc.id}/${safeName}`
     const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
     if (!error && data) {
       const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
