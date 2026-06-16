@@ -18,18 +18,31 @@ export default function Invoices() {
   const [billingAddress, setBillingAddress] = useState('')
   const [loaded, setLoaded] = useState(false)
 
+  const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
   const [search, setSearch] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState(getDefaultFrom())
   const [filterDateTo, setFilterDateTo] = useState('')
 
   if (ready && !loaded) { fetchBookings(); setLoaded(true) }
 
-  async function fetchBookings() {
-    const { data } = await supabase
-      .from('bookings')
-      .select('*, customers(customer_name, type), medical_cases(*), payments(*)')
-      .order('booking_date', { ascending: false })
-    if (data) setBookings(data)
+  async function fetchBookings(dateFrom?: string, dateTo?: string) {
+    let all: any[] = []
+    let from = 0
+    const df = dateFrom ?? filterDateFrom
+    const dt = dateTo ?? filterDateTo
+    while (true) {
+      let q = supabase.from('bookings')
+        .select('*, customers(customer_name, type), medical_cases(*), payments(*)')
+        .order('booking_date', { ascending: false })
+      if (df) q = q.gte('booking_date', df)
+      if (dt) q = q.lte('booking_date', dt)
+      const { data } = await q.range(from, from + 999)
+      if (!data || data.length === 0) break
+      all = [...all, ...data]
+      if (data.length < 1000) break
+      from += 1000
+    }
+    setBookings(all)
   }
 
   const handleOpenInvoice = (booking: any) => {
@@ -104,11 +117,18 @@ export default function Invoices() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
-          <div className="relative">
-            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
-            <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
+              <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchBookings()}
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <button onClick={() => fetchBookings()}
+              className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] transition-colors flex-shrink-0">
+              ค้นหา
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -124,7 +144,7 @@ export default function Invoices() {
           </div>
           <div className="flex justify-between items-center pt-1">
             <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo('') }}
+            <button onClick={() => { setSearch(''); setFilterDateFrom(getDefaultFrom()); setFilterDateTo(''); fetchBookings(getDefaultFrom(), '') }}
               className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>

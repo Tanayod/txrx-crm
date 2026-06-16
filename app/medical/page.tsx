@@ -18,8 +18,9 @@ export default function Medical() {
   const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '' })
   const [loaded, setLoaded] = useState(false)
 
+  const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
   const [search, setSearch] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState(getDefaultFrom())
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterBookedMin, setFilterBookedMin] = useState('')
@@ -30,22 +31,13 @@ export default function Medical() {
 
   if (ready && !loaded) { fetchCases(); setLoaded(true) }
 
- async function fetchCases() {
-  let all: any[] = []
-  let from = 0
-  while (true) {
+  async function fetchCases() {
     const { data } = await supabase
       .from('bookings')
       .select('*, customers(customer_name), medical_cases(*)')
       .order('booking_date', { ascending: false })
-      .range(from, from + 999)
-    if (!data || data.length === 0) break
-    all = [...all, ...data]
-    if (data.length < 1000) break
-    from += 1000
+    if (data) setCases(data)
   }
-  setCases(all)
-}
 
   const fetchCertificates = async (caseId: string) => {
     const { data } = await supabase.from('certificates').select('*').eq('case_id', caseId)
@@ -138,9 +130,10 @@ export default function Medical() {
   }
 
   const clearFilters = () => {
-    setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('')
+    setSearch(''); setFilterDateFrom(getDefaultFrom()); setFilterDateTo(''); setFilterStatus('')
     setFilterBookedMin(''); setFilterBookedMax('')
     setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
+    fetchCases(getDefaultFrom(), '')
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
@@ -160,11 +153,18 @@ export default function Medical() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
-          <div className="relative">
-            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
-            <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
+              <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchCases()}
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+            </div>
+            <button onClick={() => fetchCases()}
+              className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] transition-colors flex-shrink-0">
+              ค้นหา
+            </button>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>

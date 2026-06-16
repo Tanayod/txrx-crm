@@ -39,7 +39,11 @@ export default function Bookings() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [form, setForm] = useState<any>(emptyForm)
 
-  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const getDefaultFrom = () => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3)
+    return d.toISOString().slice(0,10)
+  }
+  const [filterDateFrom, setFilterDateFrom] = useState(getDefaultFrom())
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterShift, setFilterShift] = useState('')
   const [filterService, setFilterService] = useState('')
@@ -55,16 +59,20 @@ export default function Bookings() {
 
   async function fetchAll() { fetchBookings(); fetchCustomers(); fetchLocations() }
 
-  async function fetchBookings() {
+  async function fetchBookings(dateFrom?: string, dateTo?: string) {
     let all: any[] = []
     let from = 0
     const pageSize = 1000
+    const df = dateFrom ?? filterDateFrom
+    const dt = dateTo ?? filterDateTo
     while (true) {
-      const { data } = await supabase
+      let q = supabase
         .from('bookings')
         .select('*, customers(customer_name), medical_cases(*), payments(*)')
         .order('booking_date', { ascending: false })
-        .range(from, from + pageSize - 1)
+      if (df) q = q.gte('booking_date', df)
+      if (dt) q = q.lte('booking_date', dt)
+      const { data } = await q.range(from, from + pageSize - 1)
       if (!data || data.length === 0) break
       all = [...all, ...data]
       if (data.length < pageSize) break
@@ -129,13 +137,10 @@ export default function Bookings() {
   }
 
   const handleDelete = async () => {
-  if (!deleteId) return
-  await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
-  await supabase.from('payments').delete().eq('booking_id', deleteId)
-  await supabase.from('special_exams').delete().eq('booking_id', deleteId)
-  await supabase.from('bookings').delete().eq('id', deleteId)
-  setDeleteId(null); fetchBookings()
-}
+    if (!deleteId) return
+    await supabase.from('bookings').delete().eq('id', deleteId)
+    setDeleteId(null); fetchBookings()
+  }
 
   const getPaymentStatus = (b: any) => {
     const p = b.payments?.[0]
@@ -205,10 +210,11 @@ export default function Bookings() {
   }
 
   const clearFilters = () => {
-    setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterShift('')
+    setSearch(''); setFilterDateFrom(getDefaultFrom()); setFilterDateTo(''); setFilterShift('')
     setFilterService(''); setFilterLocation(''); setFilterPayment('')
     setFilterBookedMin(''); setFilterBookedMax('')
     setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
+    fetchBookings(getDefaultFrom(), '')
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
@@ -234,11 +240,18 @@ export default function Bookings() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
-          <div className="relative mb-3">
-            <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
-            <input type="text" placeholder="ค้นหาลูกค้า เลขจอง หรือสถานที่..."
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-1">
+              <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
+              <input type="text" placeholder="ค้นหาลูกค้า เลขจอง หรือสถานที่..."
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchBookings()}
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <button onClick={() => fetchBookings()}
+              className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] transition-colors flex-shrink-0">
+              ค้นหา
+            </button>
           </div>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <div>
