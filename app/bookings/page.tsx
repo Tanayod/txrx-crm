@@ -36,6 +36,7 @@ export default function Bookings() {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [form, setForm] = useState<any>(emptyForm)
 
   const [filterDateFrom, setFilterDateFrom] = useState('')
@@ -55,11 +56,21 @@ export default function Bookings() {
   async function fetchAll() { fetchBookings(); fetchCustomers(); fetchLocations() }
 
   async function fetchBookings() {
-    const { data } = await supabase
-      .from('bookings')
-      .select('*, customers(customer_name), medical_cases(*), payments(*)')
-      .order('booking_date', { ascending: false })
-    if (data) setBookings(data)
+    let all: any[] = []
+    let from = 0
+    const pageSize = 1000
+    while (true) {
+      const { data } = await supabase
+        .from('bookings')
+        .select('*, customers(customer_name), medical_cases(*), payments(*)')
+        .order('booking_date', { ascending: false })
+        .range(from, from + pageSize - 1)
+      if (!data || data.length === 0) break
+      all = [...all, ...data]
+      if (data.length < pageSize) break
+      from += pageSize
+    }
+    setBookings(all)
   }
 
   async function fetchCustomers() {
@@ -326,31 +337,91 @@ export default function Bookings() {
             const medStatus = getMedicalStatus(b)
             const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
             return (
-              <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
-                <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
-                <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>
-                <span className="text-gray-500 text-xs">{b.booking_date}</span>
-                <span className="text-gray-500 text-xs truncate">{b.location_name || '-'}</span>
-                <span className="text-xs">
-                  <span className="text-gray-700">{b.booked_count || 0}</span>
-                  <span className="text-gray-300 mx-0.5">/</span>
-                  <span className="text-[#185FA5] font-semibold">{mc?.actual_count ?? '-'}</span>
-                </span>
-                <span className="text-xs">
-                  {b.sim_count > 0 ? (
-                    <span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium">
-                      {b.sim_count} ซิม {b.sim_package ? `(฿${b.sim_package})` : ''}
-                    </span>
-                  ) : <span className="text-gray-300">-</span>}
-                </span>
-                <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${payStatus.color}`}>{payStatus.label}</span></span>
-                <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit font-medium ${medStatus.color}`}>
-                  <medStatus.icon size={10}/>{medStatus.label}
-                </span></span>
-                <span className="flex gap-2 justify-end">
-                  <button onClick={() => openEdit(b)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={15}/></button>
-                  <button onClick={() => setDeleteId(b.id)} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>
-                </span>
+              <div key={b.id} className="border-b border-gray-50">
+                <div
+                  className="grid grid-cols-10 gap-2 px-5 py-3.5 text-sm hover:bg-blue-50/30 transition-colors items-center cursor-pointer"
+                  onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                >
+                  <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
+                  <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>
+                  <span className="text-gray-500 text-xs">{b.booking_date}</span>
+                  <span className="text-gray-500 text-xs truncate">{b.location_name || '-'}</span>
+                  <span className="text-xs">
+                    <span className="text-gray-700">{b.booked_count || 0}</span>
+                    <span className="text-gray-300 mx-0.5">/</span>
+                    <span className="text-[#185FA5] font-semibold">{mc?.actual_count ?? '-'}</span>
+                  </span>
+                  <span className="text-xs">
+                    {b.sim_count > 0 ? (
+                      <span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium">
+                        {b.sim_count} ซิม {b.sim_package ? `(฿${b.sim_package})` : ''}
+                      </span>
+                    ) : <span className="text-gray-300">-</span>}
+                  </span>
+                  <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${payStatus.color}`}>{payStatus.label}</span></span>
+                  <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit font-medium ${medStatus.color}`}>
+                    <medStatus.icon size={10}/>{medStatus.label}
+                  </span></span>
+                  <span className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => openEdit(b)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={15}/></button>
+                    <button onClick={() => setDeleteId(b.id)} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>
+                  </span>
+                </div>
+                {expandedId === b.id && (
+                  <div className="px-5 pb-4 pt-3 bg-blue-50/40 border-t border-blue-100">
+                    <div className="grid grid-cols-4 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">ประเภทบริการ</p>
+                        <p className="text-xs font-medium text-gray-700">{b.service_type || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">กะ</p>
+                        <p className="text-xs font-medium text-gray-700">{b.shift || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">เวลา</p>
+                        <p className="text-xs font-medium text-gray-700">{b.exam_time || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">สัญชาติ</p>
+                        <p className="text-xs font-medium text-gray-700">{b.nationality || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">จังหวัด</p>
+                        <p className="text-xs font-medium text-gray-700">{b.province || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">ซิมทรู</p>
+                        <p className="text-xs font-medium text-gray-700">{b.sim_true_status || '-'}</p>
+                      </div>
+                      {b.service_type === 'ไฟล์ทบิน' && b.meal_price > 0 && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-gray-400 mb-0.5">ค่าข้าวไฟล์ทบิน</p>
+                          <p className="text-xs font-medium text-sky-600">฿{b.meal_price} × {b.meal_count} มื้อ × {b.booked_count} คน = ฿{(b.meal_price * b.meal_count * b.booked_count).toLocaleString()}</p>
+                        </div>
+                      )}
+                      {b.location_url && (
+                        <div>
+                          <p className="text-xs text-gray-400 mb-0.5">Google Map</p>
+                          <a href={b.location_url} target="_blank" rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-[#185FA5] hover:underline flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                            </svg>
+                            เปิด Google Map
+                          </a>
+                        </div>
+                      )}
+                      {b.admin_note && (
+                        <div className="col-span-4">
+                          <p className="text-xs text-gray-400 mb-0.5">หมายเหตุ</p>
+                          <p className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2 border border-gray-100">{b.admin_note}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}

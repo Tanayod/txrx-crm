@@ -10,6 +10,8 @@ import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconC
 
 const DAYS_TH = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
+const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+
 export default function Dashboard() {
   const { user, role, ready, logout } = useAuth('/dashboard')
   const [loaded, setLoaded] = useState(false)
@@ -63,8 +65,8 @@ export default function Dashboard() {
     const yestStr = yesterday.toISOString().slice(0,10)
     const { data: todayBookings } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').eq('booking_date', todayStr)
     const { data: yestBookings } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').eq('booking_date', yestStr)
-    const dtd = todayBookings?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
-    const dtdPrev = yestBookings?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
+    const dtd = todayBookings?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
+    const dtdPrev = yestBookings?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
 
     // WTD
     const dayOfWeek = today.getDay()
@@ -75,9 +77,9 @@ export default function Dashboard() {
     const endOfLastW = new Date(startOfLastW); endOfLastW.setDate(startOfLastW.getDate() + 6)
     const { data: wtdData } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', startOfW.toISOString().slice(0,10)).lte('booking_date', todayStr)
     const { data: lastWData } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', startOfLastW.toISOString().slice(0,10)).lte('booking_date', endOfLastW.toISOString().slice(0,10))
-    const wtd = wtdData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
+    const wtd = wtdData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
     const wtdAvg = wtd / wtdDays
-    const lastWTotal = lastWData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
+    const lastWTotal = lastWData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
     const wtdPrevAvg = lastWTotal / 7
 
     // MTD
@@ -88,9 +90,9 @@ export default function Dashboard() {
     const daysInLastMonth = lastMonthEnd.getDate()
     const { data: mtdData } = await supabase.from('bookings').select('booked_count, service_type, booking_date, medical_cases(actual_count), payments(amount_received)').gte('booking_date', firstOfMonth).lte('booking_date', todayStr)
     const { data: lastMData } = await supabase.from('bookings').select('booked_count, service_type, medical_cases(actual_count), payments(amount_received)').gte('booking_date', lastMonthStart.toISOString().slice(0,10)).lte('booking_date', lastMonthEnd.toISOString().slice(0,10))
-    const mtd = mtdData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
+    const mtd = mtdData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
     const mtdAvg = mtd / mtdDays
-    const lastMTotal = lastMData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0), 0) || 0
+    const lastMTotal = lastMData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
     const mtdPrevAvg = lastMTotal / daysInLastMonth
 
     // Range
@@ -109,28 +111,28 @@ export default function Dashboard() {
 
     // Utilization
     const totalBooked = rangeData?.reduce((s,b) => s + (b.booked_count || 0), 0) || 0
-    const totalActual = rangeData?.reduce((s,b) => s + ((b.medical_cases as any)?.[0]?.actual_count || 0), 0) || 0
+    const totalActual = rangeData?.reduce((s,b) => s + (getMc(b)?.actual_count || 0), 0) || 0
     const utilization = totalBooked > 0 ? Math.min(Math.round((totalActual/totalBooked)*100), 100) : 0
 
     // Revenue
-    const revenue = rangeData?.reduce((s,b) => s + ((b.payments as any)?.[0]?.amount_received || 0), 0) || 0
-    const prevRevenue = prevData?.reduce((s,b) => s + ((b.payments as any)?.[0]?.amount_received || 0), 0) || 0
+    const revenue = rangeData?.reduce((s,b) => s + ((Array.isArray(b.payments) ? b.payments?.[0] : b.payments)?.amount_received || 0), 0) || 0
+    const prevRevenue = prevData?.reduce((s,b) => s + ((Array.isArray(b.payments) ? b.payments?.[0] : b.payments)?.amount_received || 0), 0) || 0
 
     // Peak days
     const days = [0,0,0,0,0,0,0]
-    rangeData?.forEach(b => { const d = new Date(b.booking_date).getDay(); days[d] += ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
+    rangeData?.forEach(b => { const d = new Date(b.booking_date).getDay(); days[d] += (getMc(b)?.actual_count || b.booked_count || 0) })
     setPeakDays(days)
 
     // Service breakdown
     const services: any = {}, prevServices: any = {}
-    rangeData?.forEach(b => { const s = b.service_type || 'ไม่ระบุ'; services[s] = (services[s]||0) + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
-    prevData?.forEach(b => { const s = b.service_type || 'ไม่ระบุ'; prevServices[s] = (prevServices[s]||0) + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
+    rangeData?.forEach(b => { const s = b.service_type || 'ไม่ระบุ'; services[s] = (services[s]||0) + (getMc(b)?.actual_count || b.booked_count || 0) })
+    prevData?.forEach(b => { const s = b.service_type || 'ไม่ระบุ'; prevServices[s] = (prevServices[s]||0) + (getMc(b)?.actual_count || b.booked_count || 0) })
     setServiceBreakdown(Object.entries(services).sort((a:any,b:any) => b[1]-a[1]).map(([k,v]) => ({ name: k, count: v as number })))
     setPrevServiceBreakdown(Object.entries(prevServices).map(([k,v]) => ({ name: k, count: v as number })))
 
     // Top customers
     const custCount: any = {}
-    rangeData?.forEach(b => { const n = b.customers?.customer_name; if (n) custCount[n] = (custCount[n]||0) + ((b.medical_cases as any)?.[0]?.actual_count || b.booked_count || 0) })
+    rangeData?.forEach(b => { const n = b.customers?.customer_name; if (n) custCount[n] = (custCount[n]||0) + (getMc(b)?.actual_count || b.booked_count || 0) })
     setTopCustomers(Object.entries(custCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,10).map(([name,count]) => ({ name, count })))
 
     // Active & Repeat
@@ -145,7 +147,7 @@ export default function Dashboard() {
     const { data: allBookings } = await supabase.from('bookings').select('booking_date, service_type, customers(customer_name)').gte('booking_date', ninetyDaysAgo.toISOString().slice(0,10)).lte('booking_date', yestStr)
     const lastSeen: any = {}
     allBookings?.forEach(b => {
-      const n = b.customers?.customer_name
+      const n = (b.customers as any)?.customer_name
       if (!n) return
       if (!lastSeen[n] || b.booking_date > lastSeen[n].date) lastSeen[n] = { date: b.booking_date, type: b.service_type }
     })
@@ -164,23 +166,26 @@ export default function Dashboard() {
       renew: renewList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5)
     })
 
-    // ✅ Aging certs — นับจาก medical_cases ที่ cert_status = 'รอส่ง' เท่านั้น
-   const { data: yearMedical } = await supabase
-  .from('bookings')
-  .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count)')
-  .gte('booking_date', '2026-06-01')
-  .lte('booking_date', todayStr)
+    // ✅ Aging certs — นับเฉพาะ cert_status = 'รอส่ง' เท่านั้น
+    const { data: yearMedical } = await supabase
+      .from('bookings')
+      .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_status)')
+      .gte('booking_date', '2026-01-01')
+      .lte('booking_date', todayStr)
 
-  const agingList = (yearMedical || [])
-  .map(b => ({
-    case_number: b.case_number,
-    customer_name: (b.customers as any)?.customer_name,
-    booking_date: b.booking_date,
-    pending: Math.max((b.booked_count || 0) - ((b.medical_cases as any)?.[0]?.actual_count || 0), 0),
-    daysOver: Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
-  }))
-  .filter(b => b.pending > 0)
-  .sort((a, b) => b.pending - a.pending)
+    const agingList = (yearMedical || [])
+      .map(b => {
+        const mc = getMc(b)
+        return {
+          case_number: b.case_number,
+          customer_name: (b.customers as any)?.customer_name,
+          booking_date: b.booking_date,
+          pending: (mc && mc.cert_status === 'รอส่ง') ? (mc.actual_count || 0) : 0,
+          daysOver: Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
+        }
+      })
+      .filter(b => b.pending > 0)
+      .sort((a, b) => b.pending - a.pending)
 
     const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 5))
@@ -352,7 +357,7 @@ export default function Dashboard() {
               {serviceBreakdown.map(s => {
                 const prev = prevServiceBreakdown.find(p => p.name === s.name)?.count || 0
                 const { pct, up } = pctDiff(s.count, prev)
-                const colors: any = { 'ตรวจนอกสถานที่ (Mobile)': '#185FA5', 'คลินิก': '#7C3AED', 'Walk-in': '#059669' }
+                const colors: any = { 'ตรวจนอกสถานที่ (Mobile)': '#185FA5', 'คลินิก': '#7C3AED', 'Walk-in': '#059669', 'ไฟล์ทบิน': '#0EA5E9' }
                 const color = colors[s.name] || '#94A3B8'
                 return (
                   <div key={s.name}>
