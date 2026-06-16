@@ -252,6 +252,7 @@ export default function Bookings() {
                 <option value="">ทั้งหมด</option>
                 <option>ตรวจนอกสถานที่ (Mobile)</option>
                 <option>คลินิก</option><option>Walk-in</option>
+                <option>ไฟล์ทบิน</option>
               </select>
             </div>
             <div>
@@ -425,7 +426,10 @@ export default function Bookings() {
                     </div>
                   </div>
                   {form.meal_price > 0 && form.meal_count > 0 && (
-                    <p className="text-xs text-sky-600 mt-2 font-medium">รวมค่าข้าว: ฿{(form.meal_price * form.meal_count).toLocaleString()}</p>
+                    <p className="text-xs text-sky-600 mt-2 font-medium">
+                      รวมค่าข้าว: ฿{(form.meal_price * form.meal_count * (form.booked_count || 1)).toLocaleString()}
+                      <span className="text-sky-400 ml-1">({form.meal_price} × {form.meal_count} มื้อ × {form.booked_count || 1} คน)</span>
+                    </p>
                   )}
                 </div>
               )}
