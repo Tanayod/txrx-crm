@@ -30,13 +30,22 @@ export default function Medical() {
 
   if (ready && !loaded) { fetchCases(); setLoaded(true) }
 
-  async function fetchCases() {
+ async function fetchCases() {
+  let all: any[] = []
+  let from = 0
+  while (true) {
     const { data } = await supabase
       .from('bookings')
       .select('*, customers(customer_name), medical_cases(*)')
       .order('booking_date', { ascending: false })
-    if (data) setCases(data)
+      .range(from, from + 999)
+    if (!data || data.length === 0) break
+    all = [...all, ...data]
+    if (data.length < 1000) break
+    from += 1000
   }
+  setCases(all)
+}
 
   const fetchCertificates = async (caseId: string) => {
     const { data } = await supabase.from('certificates').select('*').eq('case_id', caseId)
