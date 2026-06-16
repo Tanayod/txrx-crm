@@ -167,13 +167,22 @@ export default function Dashboard() {
     })
 
     // ✅ Aging certs — นับเฉพาะ cert_status = 'รอส่ง' เท่านั้น
-    const { data: yearMedical } = await supabase
-      .from('bookings')
-      .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_status)')
-      .gte('booking_date', '2026-01-01')
-      .lte('booking_date', todayStr)
+    let allYearMedical: any[] = []
+    let agingFrom = 0
+    while (true) {
+      const { data: chunk } = await supabase
+        .from('bookings')
+        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_status)')
+        .gte('booking_date', '2026-01-01')
+        .lte('booking_date', todayStr)
+        .range(agingFrom, agingFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allYearMedical = [...allYearMedical, ...chunk]
+      if (chunk.length < 1000) break
+      agingFrom += 1000
+    }
 
-    const agingList = (yearMedical || [])
+    const agingList = (allYearMedical || [])
       .map(b => {
         const mc = getMc(b)
         return {
