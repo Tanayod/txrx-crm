@@ -19,6 +19,7 @@ const emptyForm = {
   exam_time: '', nationality: 'พม่า',
   booked_count: 0, sim_true_status: 'รอคำตอบลูกค้า',
   sim_count: 0, sim_package: '',
+  meal_price: 0, meal_count: 0,
   admin_note: ''
 }
 
@@ -89,6 +90,7 @@ export default function Bookings() {
       nationality: b.nationality || 'พม่า', booked_count: b.booked_count || 0,
       sim_true_status: b.sim_true_status || 'รอคำตอบลูกค้า',
       sim_count: b.sim_count || 0, sim_package: b.sim_package || '',
+      meal_price: b.meal_price || 0, meal_count: b.meal_count || 0,
       admin_note: b.admin_note || ''
     })
     setCustomerSearch(''); setShowModal(true)
@@ -104,6 +106,7 @@ export default function Bookings() {
       exam_time: form.exam_time, nationality: form.nationality,
       booked_count: form.booked_count, sim_true_status: form.sim_true_status,
       sim_count: form.sim_count, sim_package: form.sim_package,
+      meal_price: form.meal_price, meal_count: form.meal_count,
       admin_note: form.admin_note,
     }
     if (editingId) {
@@ -399,8 +402,33 @@ export default function Bookings() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                   <option>ตรวจนอกสถานที่ (Mobile)</option>
                   <option>คลินิก</option><option>Walk-in</option>
+                  <option>ไฟล์ทบิน</option>
                 </select>
               </div>
+              {form.service_type === 'ไฟล์ทบิน' && (
+                <div className="bg-sky-50 border border-sky-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-sky-700 mb-3">✈️ ค่าข้าวไฟล์ทบิน</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">ค่าข้าว (บาท/มื้อ)</label>
+                      <input type="text" inputMode="numeric" value={form.meal_price || ''}
+                        onChange={(e) => setForm({...form, meal_price: Number(e.target.value.replace(/\D/g,''))})}
+                        placeholder="0"
+                        className="w-full border border-sky-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">จำนวนมื้อ</label>
+                      <input type="text" inputMode="numeric" value={form.meal_count || ''}
+                        onChange={(e) => setForm({...form, meal_count: Number(e.target.value.replace(/\D/g,''))})}
+                        placeholder="0"
+                        className="w-full border border-sky-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"/>
+                    </div>
+                  </div>
+                  {form.meal_price > 0 && form.meal_count > 0 && (
+                    <p className="text-xs text-sky-600 mt-2 font-medium">รวมค่าข้าว: ฿{(form.meal_price * form.meal_count).toLocaleString()}</p>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">จังหวัด</label>

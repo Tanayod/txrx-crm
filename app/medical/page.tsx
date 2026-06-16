@@ -218,9 +218,9 @@ export default function Medical() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-6 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+          <div className="grid grid-cols-7 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่ตรวจ</span>
-            <span>จอง / จริง</span><span>สถานะใบแพทย์</span><span></span>
+            <span>สถานที่</span><span>จอง / จริง</span><span>สถานะใบแพทย์</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
@@ -229,10 +229,11 @@ export default function Medical() {
               const status = getCertStatus(b)
               const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
               return (
-                <div key={b.id} className="grid grid-cols-6 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+                <div key={b.id} className="grid grid-cols-7 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                   <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
                   <span className="text-gray-500">{mc?.exam_date || b.booking_date}</span>
+                  <span className="text-gray-500 text-xs truncate">{b.location_name || '-'}</span>
                   <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
                   <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${status.color}`}><status.icon size={11} />{status.label}</span></span>
                   <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right">บันทึก / แนบไฟล์</button>

@@ -20,6 +20,7 @@ export default function Payments() {
     amount_received: 0, method: 'transfer',
     payment_status: 'ชำระเงินแล้ว', invoice_no: '',
     worker_count: 0, price_per_worker: 0,
+    ref_no: '', note: '',
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
   const [splitSource, setSplitSource] = useState({ method: 'transfer' })
@@ -29,6 +30,11 @@ export default function Payments() {
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterMethod, setFilterMethod] = useState('')
+  const [filterBookedMin, setFilterBookedMin] = useState('')
+  const [filterBookedMax, setFilterBookedMax] = useState('')
+  const [filterActualMin, setFilterActualMin] = useState('')
+  const [filterActualMax, setFilterActualMax] = useState('')
+  const [filterHasActual, setFilterHasActual] = useState('')
 
   if (ready && !loaded) { fetchBookings(); setLoaded(true) }
 
@@ -39,6 +45,8 @@ export default function Payments() {
       .order('booking_date', { ascending: false })
     if (data) setBookings(data)
   }
+
+  const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
   const getSpecialTotal = (b: any) => {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
@@ -54,7 +62,8 @@ export default function Payments() {
   const handleOpenModal = (booking: any) => {
     setSelected(booking)
     const p = booking.payments?.[0]
-    const actualCount = booking.medical_cases?.[0]?.actual_count || booking.booked_count || 0
+    const mc = getMc(booking)
+    const actualCount = mc?.actual_count || booking.booked_count || 0
     setForm({
       amount_received: p?.amount_received || 0,
       method: p?.method || 'transfer',
@@ -62,6 +71,8 @@ export default function Payments() {
       invoice_no: p?.invoice_no || '',
       worker_count: p?.worker_count || actualCount,
       price_per_worker: p?.price_per_worker || 0,
+      ref_no: p?.ref_no || '',
+      note: p?.note || '',
     })
     setShowModal(true)
   }
@@ -80,6 +91,8 @@ export default function Payments() {
       worker_count: form.worker_count,
       price_per_worker: form.price_per_worker,
       total_amount: grandTotalSelected,
+      ref_no: form.ref_no,
+      note: form.note,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
     }
     if (p?.id) {
@@ -160,19 +173,26 @@ export default function Payments() {
 
   const filtered = bookings.filter(b => {
     const p = b.payments?.[0]
+    const mc = getMc(b)
     const status = getPaymentStatus(b)
     if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
     if (filterDateFrom && b.booking_date < filterDateFrom) return false
     if (filterDateTo && b.booking_date > filterDateTo) return false
     if (filterStatus && status.label !== filterStatus) return false
     if (filterMethod && p?.method !== filterMethod) return false
+    if (filterBookedMin && b.booked_count < Number(filterBookedMin)) return false
+    if (filterBookedMax && b.booked_count > Number(filterBookedMax)) return false
+    if (filterActualMin && (mc?.actual_count ?? -1) < Number(filterActualMin)) return false
+    if (filterActualMax && (mc?.actual_count ?? 99999) > Number(filterActualMax)) return false
+    if (filterHasActual === 'มี' && !(mc?.actual_count > 0)) return false
+    if (filterHasActual === 'ไม่มี' && mc?.actual_count > 0) return false
     return true
   })
 
   const exportExcel = () => {
     const rows = filtered.map(b => {
       const p = b.payments?.[0]
-      const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
+      const mc = getMc(b)
       const specialAmt = getSpecialTotal(b)
       const grandTotal = getGrandTotal(b)
       return {
@@ -193,6 +213,12 @@ export default function Payments() {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Payments')
     XLSX.writeFile(wb, `payments_${new Date().toISOString().slice(0,10)}.xlsx`)
+  }
+
+  const clearFilters = () => {
+    setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus(''); setFilterMethod('')
+    setFilterBookedMin(''); setFilterBookedMax('')
+    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
@@ -217,7 +243,6 @@ export default function Payments() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="relative mb-3">
             <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
@@ -225,7 +250,7 @@ export default function Payments() {
               value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
@@ -256,14 +281,43 @@ export default function Payments() {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
+              <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
+              <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
+              <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">มีแล้ว</option>
+                <option value="ไม่มี">ยังไม่มี</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
+              <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
+              <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+          </div>
           <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
-            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus(''); setFilterMethod('') }}
-              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
-        {/* Table */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
           <div className="grid grid-cols-9 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
@@ -278,7 +332,7 @@ export default function Payments() {
           ) : filtered.map((b) => {
             const status = getPaymentStatus(b)
             const p = b.payments?.[0]
-            const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
+            const mc = getMc(b)
             const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
             const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
             const specialAmt = getSpecialTotal(b)
@@ -310,7 +364,6 @@ export default function Payments() {
         </div>
       </div>
 
-      {/* Modal บันทึกการเงิน */}
       {showModal && selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
@@ -319,15 +372,12 @@ export default function Payments() {
               <p className="text-xs text-gray-400 mt-0.5">{selected.case_number} · {selected.booking_date}</p>
             </div>
             <div className="p-6 space-y-4">
-
               {selected.customers?.type === 'credit' && (
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                   <p className="text-xs text-amber-700 font-semibold">ลูกค้าเครดิต</p>
                   <p className="text-xs text-amber-600 mt-0.5">วงเงิน: ฿{selected.customers.credit_limit?.toLocaleString()} | ค้างอยู่: ฿{selected.customers.credit_balance?.toLocaleString()}</p>
                 </div>
               )}
-
-              {/* คำนวณยอด */}
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <p className="text-xs font-semibold text-blue-700 mb-3">💰 คำนวณยอดเงิน</p>
                 <div className="grid grid-cols-2 gap-3 mb-3">
@@ -363,7 +413,6 @@ export default function Payments() {
                   </div>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ยอดรับชำระจริง (บาท)</label>
                 <input type="text" inputMode="numeric" value={form.amount_received || ''}
@@ -371,7 +420,6 @@ export default function Payments() {
                   placeholder={`${grandTotalSelected.toLocaleString()} (ปล่อยว่างถ้าเท่ากับยอดรวม)`}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วิธีชำระ</label>
@@ -391,18 +439,27 @@ export default function Payments() {
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่ใบวางบิล</label>
                 <input value={form.invoice_no} onChange={(e) => setForm({...form, invoice_no: e.target.value})}
                   placeholder="INV-XXXX"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
-
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่อ้างอิง</label>
+                <input value={form.ref_no} onChange={(e) => setForm({...form, ref_no: e.target.value})}
+                  placeholder="เลขที่อ้างอิงการโอน..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
+                <textarea value={form.note} onChange={(e) => setForm({...form, note: e.target.value})} rows={2}
+                  placeholder="หมายเหตุเพิ่มเติม..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
               <button onClick={handleSave} className="w-full bg-[#185FA5] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#0C447C] transition-colors">
                 บันทึกการชำระเงิน
               </button>
-
               <div className="border-t border-gray-100 pt-4">
                 <p className="text-xs font-medium text-gray-600 mb-2">แนบสลิป</p>
                 {selected.payments?.[0]?.slip_url && (
@@ -425,7 +482,6 @@ export default function Payments() {
         </div>
       )}
 
-      {/* Modal ตัดชำระหลายจอง */}
       {showSplitModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
