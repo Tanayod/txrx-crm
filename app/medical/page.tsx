@@ -31,12 +31,23 @@ export default function Medical() {
 
   if (ready && !loaded) { fetchCases(); setLoaded(true) }
 
-  async function fetchCases() {
-    const { data } = await supabase
-      .from('bookings')
-      .select('*, customers(customer_name), medical_cases(*)')
-      .order('booking_date', { ascending: false })
-    if (data) setCases(data)
+  async function fetchCases(dateFrom?: string, dateTo?: string) {
+    let all: any[] = []
+    let from = 0
+    const df = dateFrom ?? filterDateFrom
+    const dt = dateTo ?? filterDateTo
+    while (true) {
+      let q = supabase.from('bookings').select('*, customers(customer_name), medical_cases(*)')
+        .order('booking_date', { ascending: false })
+      if (df) q = q.gte('booking_date', df)
+      if (dt) q = q.lte('booking_date', dt)
+      const { data } = await q.range(from, from + 999)
+      if (!data || data.length === 0) break
+      all = [...all, ...data]
+      if (data.length < 1000) break
+      from += 1000
+    }
+    setCases(all)
   }
 
   const fetchCertificates = async (caseId: string) => {
@@ -130,10 +141,11 @@ export default function Medical() {
   }
 
   const clearFilters = () => {
-    setSearch(''); setFilterDateFrom(getDefaultFrom()); setFilterDateTo(''); setFilterStatus('')
+    const df = getDefaultFrom()
+    setSearch(''); setFilterDateFrom(df); setFilterDateTo(''); setFilterStatus('')
     setFilterBookedMin(''); setFilterBookedMax('')
     setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
-    fetchCases(getDefaultFrom(), '')
+    fetchCases(df, '')
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
