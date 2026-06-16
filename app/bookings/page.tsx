@@ -129,10 +129,13 @@ export default function Bookings() {
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
-    await supabase.from('bookings').delete().eq('id', deleteId)
-    setDeleteId(null); fetchBookings()
-  }
+  if (!deleteId) return
+  await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
+  await supabase.from('payments').delete().eq('booking_id', deleteId)
+  await supabase.from('special_exams').delete().eq('booking_id', deleteId)
+  await supabase.from('bookings').delete().eq('id', deleteId)
+  setDeleteId(null); fetchBookings()
+}
 
   const getPaymentStatus = (b: any) => {
     const p = b.payments?.[0]
