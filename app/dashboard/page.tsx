@@ -26,6 +26,7 @@ export default function Dashboard() {
     repeatRate: 0,
     pendingPayments: 0, overdueCerts: 0,
     revenue: 0, prevRevenue: 0,
+    rangeTotal: 0, prevRangeTotal: 0,
   })
 
   const [peakDays, setPeakDays] = useState<number[]>([0,0,0,0,0,0,0])
@@ -115,6 +116,10 @@ export default function Dashboard() {
     const totalBooked = rangeData?.reduce((s,b) => s + (b.booked_count || 0), 0) || 0
     const totalActual = rangeData?.reduce((s,b) => s + (getMc(b)?.actual_count || 0), 0) || 0
     const utilization = totalBooked > 0 ? Math.min(Math.round((totalActual/totalBooked)*100), 100) : 0
+
+    // ✅ ยอดตรวจรวมตามช่วงที่กรอง (เทียบช่วงก่อนหน้า)
+    const rangeTotal = totalActual
+    const prevRangeTotal = prevData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
 
     // Revenue
     const revenue = rangeData?.reduce((s,b) => s + ((Array.isArray(b.payments) ? b.payments?.[0] : b.payments)?.amount_received || 0), 0) || 0
@@ -248,6 +253,7 @@ export default function Dashboard() {
       pendingPayments: pendingData?.length || 0,
       overdueCerts: totalPendingCerts,
       revenue, prevRevenue,
+      rangeTotal, prevRangeTotal,
     })
     setLoading(false)
   }
@@ -347,7 +353,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-3 mb-4">
+        <div className="grid grid-cols-6 gap-3 mb-4">
+          <div className="bg-white border-l-4 border-l-sky-500 border border-gray-100 rounded-xl p-4 shadow-sm">
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">ยอดตรวจช่วงที่กรอง</p>
+            <p className="text-3xl font-bold text-sky-600">{loading ? '—' : kpi.rangeTotal.toLocaleString()}</p>
+            <Trend cur={kpi.rangeTotal} prev={kpi.prevRangeTotal} label="vs ช่วงก่อน"/>
+          </div>
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Utilization</p>
             <p className="text-3xl font-bold text-[#185FA5]">{loading ? '—' : `${kpi.utilization}%`}</p>
@@ -356,7 +367,7 @@ export default function Dashboard() {
             </div>
             <p className="text-xs text-gray-400 mt-1">จอง vs ตรวจจริง</p>
           </div>
-          <div className="bg-white border-l-4 border-l-emerald-500 border border-gray-100 rounded-xl p-4 shadow-sm col-span-2 cursor-pointer" onClick={() => window.location.href='/payments'}>
+          <div className="bg-white border-l-4 border-l-emerald-500 border border-gray-100 rounded-xl p-4 shadow-sm cursor-pointer" onClick={() => window.location.href='/payments'}>
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">รับเงินช่วงนี้</p>
             <p className="text-3xl font-bold text-emerald-600">฿{loading ? '—' : kpi.revenue.toLocaleString()}</p>
             <Trend cur={kpi.revenue} prev={kpi.prevRevenue} label="vs ช่วงก่อน"/>
