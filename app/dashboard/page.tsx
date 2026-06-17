@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [topCustomers, setTopCustomers] = useState<any[]>([])
   const [agingCerts, setAgingCerts] = useState<any[]>([])
   const [inactiveCustomers, setInactiveCustomers] = useState<{ mou: any[], renew: any[] }>({ mou: [], renew: [] })
+  const [debtByService, setDebtByService] = useState<any[]>([])
+  const [totalDebt, setTotalDebt] = useState(0)
 
   const now = new Date()
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`)
@@ -198,6 +200,39 @@ export default function Dashboard() {
 
     const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 5))
+
+    // ✅ สรุปยอดหนี้ค้าง แยกตามประเภทงาน
+    let allDebtBookings: any[] = []
+    let debtFrom = 0
+    while (true) {
+      const { data: chunk } = await supabase
+        .from('bookings')
+        .select('service_type, payments(amount_received, total_amount, payment_status)')
+        .range(debtFrom, debtFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allDebtBookings = [...allDebtBookings, ...chunk]
+      if (chunk.length < 1000) break
+      debtFrom += 1000
+    }
+    const debtByType: any = {}
+    let debtSum = 0
+    allDebtBookings.forEach((b: any) => {
+      const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
+      const status = p?.payment_status
+      if (status === 'ยังไม่ชำระ' || status === 'ค้างชำระ' || status === 'เครดิต') {
+        const outstanding = Math.max((p?.total_amount || 0) - (p?.amount_received || 0), 0)
+        if (outstanding > 0) {
+          const s = b.service_type || 'ไม่ระบุ'
+          debtByType[s] = (debtByType[s] || 0) + outstanding
+          debtSum += outstanding
+        }
+      }
+    })
+    const { data: openingBalances } = await supabase.from('customers').select('opening_balance')
+    const openingSum = (openingBalances || []).reduce((s: number, c: any) => s + (c.opening_balance || 0), 0)
+    debtSum += openingSum
+    setDebtByService(Object.entries(debtByType).sort((a: any, b: any) => b[1] - a[1]).map(([name, amount]) => ({ name, amount })))
+    setTotalDebt(debtSum)
 
     // Pending payments
     const { data: allCustomers } = await supabase.from('customers').select('id')
@@ -485,6 +520,32 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">💳 สรุปยอดหนี้ค้างชำระ (รวมยอดยกมา)</p>
+            <span className="text-xl font-bold text-red-500">฿{loading ? '—' : totalDebt.toLocaleString()}</span>
+          </div>
+          {debtByService.length === 0 && !loading ? (
+            <p className="text-sm text-gray-400 text-center py-4">ไม่มียอดค้างชำระ</p>
+          ) : (
+            <div className="grid grid-cols-4 gap-3">
+              {debtByService.map(d => {
+                const colors: any = { 'ตรวจนอกสถานที่ (Mobile)': '#185FA5', 'คลินิก': '#7C3AED', 'Walk-in': '#059669', 'ไฟล์ทบิน': '#0EA5E9' }
+                const color = colors[d.name] || '#94A3B8'
+                return (
+                  <div key={d.name} className="bg-red-50 border border-red-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/customers'}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="w-2 h-2 rounded-full" style={{ background: color }}/>
+                      <p className="text-xs text-gray-600 truncate">{d.name}</p>
+                    </div>
+                    <p className="text-base font-bold text-red-500">฿{d.amount.toLocaleString()}</p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
       </div>
