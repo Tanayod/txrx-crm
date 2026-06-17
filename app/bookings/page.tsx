@@ -10,6 +10,7 @@ import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload, IconCheck, Ico
 
 const provinces = ['กรุงเทพมหานคร','สมุทรสาคร','ชลบุรี','นนทบุรี','ปทุมธานี','ระยอง','ลพบุรี','เชียงใหม่','นครปฐม','สมุทรปราการ','พระนครศรีอยุธยา','ลำพูน','เพชรบูรณ์','อื่นๆ']
 const SIM_PACKAGES = ['200', '250', '300']
+const SIM_TYPES = ['ซิมใหม่', 'ต่อโปรโมชั่น']
 
 const emptyForm = {
   customer_id: '', customer_name_display: '',
@@ -18,7 +19,7 @@ const emptyForm = {
   province: '', location_name: '', location_url: '',
   exam_time: '', nationality: 'พม่า',
   booked_count: 0, sim_true_status: 'รอคำตอบลูกค้า',
-  sim_count: 0, sim_package: '',
+  sim_items: [] as any[],
   meal_price: 0, meal_count: 0,
   admin_note: ''
 }
@@ -38,6 +39,7 @@ export default function Bookings() {
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [form, setForm] = useState<any>(emptyForm)
+  const [simItems, setSimItems] = useState<any[]>([])
 
   const getDefaultFrom = () => {
     const d = new Date(); d.setMonth(d.getMonth() - 3)
@@ -97,9 +99,9 @@ export default function Bookings() {
     return `TXR-${d}-${rand}`
   }
 
-  const openCreate = () => { setEditingId(null); setForm(emptyForm); setCustomerSearch(''); setShowModal(true) }
+  const openCreate = () => { setEditingId(null); setForm(emptyForm); setSimItems([]); setCustomerSearch(''); setShowModal(true) }
 
-  const openEdit = (b: any) => {
+  const openEdit = async (b: any) => {
     setEditingId(b.id)
     setForm({
       customer_id: b.customer_id, customer_name_display: b.customers?.customer_name || '',
@@ -108,42 +110,50 @@ export default function Bookings() {
       location_url: b.location_url || '', exam_time: b.exam_time || '',
       nationality: b.nationality || 'พม่า', booked_count: b.booked_count || 0,
       sim_true_status: b.sim_true_status || 'รอคำตอบลูกค้า',
-      sim_count: b.sim_count || 0, sim_package: b.sim_package || '',
       meal_price: b.meal_price || 0, meal_count: b.meal_count || 0,
       admin_note: b.admin_note || ''
     })
+    const { data: simData } = await supabase.from('sim_items').select('*').eq('booking_id', b.id)
+    setSimItems(simData && simData.length > 0 ? simData : (b.sim_count > 0 ? [{ sim_package: b.sim_package || '200', sim_type: 'ซิมใหม่', sim_count: b.sim_count }] : []))
     setCustomerSearch(''); setShowModal(true)
   }
 
   const handleSave = async () => {
     if (!form.customer_id || !form.booking_date) return alert('กรุณาเลือกลูกค้าและวันที่')
     setSaving(true)
+    const totalSimCount = simItems.reduce((s, item) => s + (Number(item.sim_count) || 0), 0)
     const payload = {
       customer_id: form.customer_id, booking_date: form.booking_date,
       shift: form.shift, service_type: form.service_type, province: form.province,
       location_name: form.location_name, location_url: form.location_url,
       exam_time: form.exam_time, nationality: form.nationality,
       booked_count: form.booked_count, sim_true_status: form.sim_true_status,
-      sim_count: form.sim_count, sim_package: form.sim_package,
+      sim_count: totalSimCount,
       meal_price: form.meal_price, meal_count: form.meal_count,
       admin_note: form.admin_note,
     }
+    let bookingId = editingId
     if (editingId) {
       await supabase.from('bookings').update(payload).eq('id', editingId)
+      await supabase.from('sim_items').delete().eq('booking_id', editingId)
     } else {
-      await supabase.from('bookings').insert([{ ...payload, case_number: generateCaseNumber() }])
+      const { data: inserted } = await supabase.from('bookings').insert([{ ...payload, case_number: generateCaseNumber() }]).select().single()
+      bookingId = inserted?.id
+    }
+    if (bookingId && simItems.length > 0) {
+      const simRows = simItems.filter(i => i.sim_count > 0).map(i => ({
+        booking_id: bookingId, sim_package: i.sim_package, sim_type: i.sim_type, sim_count: i.sim_count
+      }))
+      if (simRows.length > 0) await supabase.from('sim_items').insert(simRows)
     }
     setSaving(false); fetchBookings(); setShowModal(false)
   }
 
-const handleDelete = async () => {
-  if (!deleteId) return
-  await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
-  await supabase.from('payments').delete().eq('booking_id', deleteId)
-  await supabase.from('special_exams').delete().eq('booking_id', deleteId)
-  await supabase.from('bookings').delete().eq('id', deleteId)
-  setDeleteId(null); fetchBookings()
-}
+  const handleDelete = async () => {
+    if (!deleteId) return
+    await supabase.from('bookings').delete().eq('id', deleteId)
+    setDeleteId(null); fetchBookings()
+  }
 
   const getPaymentStatus = (b: any) => {
     const p = b.payments?.[0]
@@ -580,24 +590,50 @@ const handleDelete = async () => {
                 </select>
               </div>
               <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
-                <p className="text-xs font-semibold text-purple-700 mb-3">📱 ซิมที่ขาย</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1.5 block">จำนวนซิม</label>
-                    <input type="text" inputMode="numeric" value={form.sim_count || ''}
-                      onChange={(e) => setForm({...form, sim_count: Number(e.target.value.replace(/\D/g,''))})}
-                      placeholder="0"
-                      className="w-full border border-purple-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"/>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1.5 block">แพ็กเกจ (บาท/เดือน)</label>
-                    <select value={form.sim_package} onChange={(e) => setForm({...form, sim_package: e.target.value})}
-                      className="w-full border border-purple-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-                      <option value="">ไม่ระบุ</option>
-                      {SIM_PACKAGES.map(p => <option key={p} value={p}>฿{p}/เดือน</option>)}
-                    </select>
-                  </div>
+                <div className="flex justify-between items-center mb-3">
+                  <p className="text-xs font-semibold text-purple-700">📱 ซิมที่ขาย</p>
+                  <button type="button"
+                    onClick={() => setSimItems([...simItems, { sim_package: '200', sim_type: 'ซิมใหม่', sim_count: 0 }])}
+                    className="text-xs text-purple-600 hover:underline font-medium">
+                    + เพิ่มแพ็คเกจ
+                  </button>
                 </div>
+                {simItems.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีรายการซิม</p>
+                ) : (
+                  <div className="space-y-2">
+                    {simItems.map((item, i) => (
+                      <div key={i} className="grid grid-cols-4 gap-2 items-end bg-white rounded-lg p-2.5 border border-purple-200">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">แพ็กเกจ</label>
+                          <select value={item.sim_package}
+                            onChange={(e) => { const u = [...simItems]; u[i].sim_package = e.target.value; setSimItems(u) }}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400">
+                            {SIM_PACKAGES.map(p => <option key={p} value={p}>฿{p}/ด.</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">ประเภท</label>
+                          <select value={item.sim_type}
+                            onChange={(e) => { const u = [...simItems]; u[i].sim_type = e.target.value; setSimItems(u) }}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400">
+                            {SIM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">จำนวน</label>
+                          <input type="text" inputMode="numeric" value={item.sim_count || ''}
+                            onChange={(e) => { const u = [...simItems]; u[i].sim_count = Number(e.target.value.replace(/\D/g,'')); setSimItems(u) }}
+                            placeholder="0"
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"/>
+                        </div>
+                        <button type="button" onClick={() => setSimItems(simItems.filter((_, idx) => idx !== i))}
+                          className="text-red-400 hover:text-red-600 text-xs pb-1.5">ลบ</button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-purple-600 font-medium pt-1">รวม {simItems.reduce((s,i) => s + (Number(i.sim_count)||0), 0)} ซิม</p>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
