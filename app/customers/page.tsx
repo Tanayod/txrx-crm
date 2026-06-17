@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload } from '@tabler/icons-react'
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload, IconX } from '@tabler/icons-react'
 
 export default function Customers() {
   const { user, role, ready, logout } = useAuth('/customers')
@@ -17,7 +17,12 @@ export default function Customers() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, note: '' })
+  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, note: '' })
+
+  const [showDebtModal, setShowDebtModal] = useState(false)
+  const [debtCustomer, setDebtCustomer] = useState<any>(null)
+  const [debtBookings, setDebtBookings] = useState<any[]>([])
+  const [debtLoading, setDebtLoading] = useState(false)
 
   if (ready && !loaded) { fetchCustomers(); setLoaded(true) }
 
@@ -26,15 +31,34 @@ export default function Customers() {
     if (data) setCustomers(data)
   }
 
+  // ยอดค้างจาก booking ที่ยังไม่ชำระ/ค้างชำระ/เครดิต (ยังไม่ตัด)
+  const getUnpaidTotal = async (customerId: string) => {
+    const { data } = await supabase
+      .from('bookings')
+      .select('id, case_number, booking_date, payments(amount_received, total_amount, payment_status)')
+      .eq('customer_id', customerId)
+    const rows = (data || []).map((b: any) => {
+      const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
+      const total = p?.total_amount || 0
+      const received = p?.amount_received || 0
+      const status = p?.payment_status
+      const outstanding = (status === 'ยังไม่ชำระ' || status === 'ค้างชำระ' || status === 'เครดิต')
+        ? Math.max(total - received, 0)
+        : 0
+      return { case_number: b.case_number, booking_date: b.booking_date, total, received, outstanding, status: status || 'ยังไม่ชำระ' }
+    }).filter((r: any) => r.outstanding > 0)
+    return rows
+  }
+
   const openCreate = () => {
     setEditingId(null)
-    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, note: '' })
+    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, note: '' })
     setShowModal(true)
   }
 
   const openEdit = (c: any) => {
     setEditingId(c.id)
-    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, note: c.note || '' })
+    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, opening_balance: c.opening_balance || 0, note: c.note || '' })
     setShowModal(true)
   }
 
@@ -54,6 +78,18 @@ export default function Customers() {
     setDeleteId(null); fetchCustomers()
   }
 
+  const openDebtModal = async (c: any) => {
+    setDebtCustomer(c)
+    setShowDebtModal(true)
+    setDebtLoading(true)
+    const rows = await getUnpaidTotal(c.id)
+    setDebtBookings(rows)
+    setDebtLoading(false)
+  }
+
+  const debtBookingTotal = debtBookings.reduce((s, r) => s + r.outstanding, 0)
+  const debtGrandTotal = (debtCustomer?.opening_balance || 0) + debtBookingTotal
+
   const filtered = customers.filter(c => {
     if (search && !c.customer_name?.includes(search) && !c.line_name?.includes(search) && !c.phone?.includes(search)) return false
     if (filterType && c.type !== filterType) return false
@@ -68,6 +104,7 @@ export default function Customers() {
       'เบอร์โทร': c.phone || '',
       'ประเภท': c.type === 'credit' ? 'เครดิต' : 'ทั่วไป',
       'วงเงินเครดิต': c.credit_limit || 0,
+      'ยอดยกมา': c.opening_balance || 0,
       'หมายเหตุ': c.note || '',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -122,15 +159,15 @@ export default function Customers() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-7 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+          <div className="grid grid-cols-8 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>รหัส</span><span>ชื่อลูกค้า</span><span>ชื่อ LINE</span>
-            <span>เบอร์โทร</span><span>ประเภท</span><span>หมายเหตุ</span><span></span>
+            <span>เบอร์โทร</span><span>ประเภท</span><span>ยอดยกมา</span><span>หมายเหตุ</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบข้อมูลลูกค้า</div>
           ) : (
             filtered.map((c) => (
-              <div key={c.id} className="grid grid-cols-7 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+              <div key={c.id} className="grid grid-cols-8 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                 <span className="text-gray-400 text-xs">CUS-{String(c.customer_code).padStart(3,'0')}</span>
                 <span className="font-medium text-gray-700">{c.customer_name}</span>
                 <span className="text-gray-500">{c.line_name || '-'}</span>
@@ -138,6 +175,17 @@ export default function Customers() {
                 <span><span className={`text-xs px-2 py-0.5 rounded-full ${c.type === 'credit' ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
                   {c.type === 'credit' ? 'เครดิต' : 'ทั่วไป'}
                 </span></span>
+                <span>
+                  {c.opening_balance > 0 ? (
+                    <button onClick={() => openDebtModal(c)} className="text-xs text-red-500 font-semibold hover:underline">
+                      ฿{c.opening_balance.toLocaleString()}+
+                    </button>
+                  ) : (
+                    <button onClick={() => openDebtModal(c)} className="text-xs text-gray-400 hover:text-[#185FA5] hover:underline">
+                      ดูยอดค้าง
+                    </button>
+                  )}
+                </span>
                 <span className="text-gray-400 text-xs">{c.note || '-'}</span>
                 <span className="flex gap-2 justify-end">
                   <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-500"><IconEdit size={15} /></button>
@@ -151,7 +199,7 @@ export default function Customers() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-lg">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-lg max-h-[90vh] overflow-y-auto">
             <p className="text-base font-medium text-gray-800 mb-4">{editingId ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้าใหม่'}</p>
             <div className="space-y-3">
               <div>
@@ -179,11 +227,19 @@ export default function Customers() {
               </div>
               {form.type === 'credit' && (
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">วงเงินเครดิต</label>
+                  <label className="text-xs text-gray-500 mb-1 block">วงเงินเครดิต (ไม่บังคับ)</label>
                   <input type="number" value={form.credit_limit} onChange={(e) => setForm({...form, credit_limit: Number(e.target.value)})}
+                    placeholder="ปล่อยว่างได้ถ้าไม่กำหนดวงเงิน"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
                 </div>
               )}
+              <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                <label className="text-xs text-red-600 font-medium mb-1 block">ยอดค้างยกมา (ก่อนใช้ระบบ)</label>
+                <input type="number" value={form.opening_balance} onChange={(e) => setForm({...form, opening_balance: Number(e.target.value)})}
+                  placeholder="0"
+                  className="w-full border border-red-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
+                <p className="text-xs text-red-400 mt-1">ใส่ยอดหนี้เดิมที่ลูกค้าค้างอยู่ก่อนเริ่มใช้ระบบนี้ (ถ้ามี)</p>
+              </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>
                 <input value={form.note} onChange={(e) => setForm({...form, note: e.target.value})}
@@ -193,6 +249,51 @@ export default function Customers() {
             <div className="flex gap-2 mt-5 justify-end">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSave} className="px-4 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C]">บันทึก</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDebtModal && debtCustomer && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-start">
+              <div>
+                <p className="text-base font-semibold text-gray-800">{debtCustomer.customer_name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">รายละเอียดยอดค้างชำระ</p>
+              </div>
+              <button onClick={() => setShowDebtModal(false)} className="text-gray-400 hover:text-gray-600"><IconX size={18}/></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {debtCustomer.opening_balance > 0 && (
+                <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 mb-2">
+                  <span className="text-xs text-amber-700 font-medium">ยอดยกมา (ก่อนใช้ระบบ)</span>
+                  <span className="text-sm font-bold text-amber-600">฿{debtCustomer.opening_balance.toLocaleString()}</span>
+                </div>
+              )}
+              {debtLoading ? (
+                <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด...</p>
+              ) : debtBookings.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">ไม่มียอดค้างจาก booking</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {debtBookings.map((b, i) => (
+                    <div key={i} className="flex justify-between items-center bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                      <div>
+                        <p className="text-xs font-medium text-gray-700">{b.case_number}</p>
+                        <p className="text-xs text-gray-400">{b.booking_date} · {b.status}</p>
+                      </div>
+                      <span className="text-sm font-bold text-red-500">฿{b.outstanding.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-gray-700">ยอดค้างรวมทั้งหมด</span>
+                <span className="text-xl font-bold text-red-500">฿{debtGrandTotal.toLocaleString()}</span>
+              </div>
             </div>
           </div>
         </div>
