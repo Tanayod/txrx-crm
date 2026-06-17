@@ -15,7 +15,7 @@ export default function Medical() {
   const [showModal, setShowModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [certificates, setCertificates] = useState<any[]>([])
-  const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '' })
+  const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '', parcel_sent: false })
   const [loaded, setLoaded] = useState(false)
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
@@ -58,7 +58,7 @@ export default function Medical() {
   const handleOpenModal = async (booking: any) => {
     setSelected(booking)
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
-    setForm({ actual_count: mc?.actual_count || 0, cert_count: mc?.cert_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date })
+    setForm({ actual_count: mc?.actual_count || 0, cert_count: mc?.cert_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date, parcel_sent: mc?.parcel_sent || false })
     if (mc?.id) await fetchCertificates(mc.id)
     else setCertificates([])
     setShowModal(true)
@@ -70,9 +70,9 @@ export default function Medical() {
     deadline.setDate(deadline.getDate() + 3)
     const deadlineStr = deadline.toISOString().slice(0, 10)
     if (mc?.id) {
-      await supabase.from('medical_cases').update({ actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr }).eq('id', mc.id)
+      await supabase.from('medical_cases').update({ actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, parcel_sent: form.parcel_sent }).eq('id', mc.id)
     } else {
-      await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง' }])
+      await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง', parcel_sent: form.parcel_sent }])
     }
     fetchCases(); setShowModal(false)
   }
@@ -83,8 +83,7 @@ export default function Medical() {
     setUploading(true)
     const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบไฟล์'); setUploading(false); return }
-    const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-const fileName = `${mc.id}/${safeName}`
+    const fileName = `${mc.id}/${Date.now()}_${file.name}`
     const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
     if (!error && data) {
       const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
@@ -267,7 +266,10 @@ const fileName = `${mc.id}/${safeName}`
                     )}
                   </span>
                   <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
-                  <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${status.color}`}><status.icon size={11} />{status.label}</span></span>
+                  <span className="flex items-center gap-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${status.color}`}><status.icon size={11} />{status.label}</span>
+                    {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
+                  </span>
                   <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right">บันทึก / แนบไฟล์</button>
                 </div>
               )
@@ -314,6 +316,12 @@ const fileName = `${mc.id}/${safeName}`
                 <textarea value={form.doctor_note} onChange={(e) => setForm({...form, doctor_note: e.target.value})} rows={2}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
               </div>
+              <label className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5 cursor-pointer">
+                <input type="checkbox" checked={form.parcel_sent}
+                  onChange={(e) => setForm({...form, parcel_sent: e.target.checked})}
+                  className="rounded border-gray-300 text-[#185FA5] focus:ring-[#185FA5]" />
+                <span className="text-xs font-medium text-blue-700">📦 นำส่งพัสดุแล้ว</span>
+              </label>
             </div>
             <button onClick={handleSaveMedical} className="w-full bg-[#185FA5] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#0C447C] mb-4">
               บันทึกจำนวนตรวจจริง
@@ -329,7 +337,7 @@ const fileName = `${mc.id}/${safeName}`
               <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
                 <IconUpload size={15} />
                 {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์ใบรับรองแพทย์'}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleUploadFile} className="hidden" disabled={uploading} />
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.zip" onChange={handleUploadFile} className="hidden" disabled={uploading} />
               </label>
             </div>
             <div className="flex justify-end mt-4">
