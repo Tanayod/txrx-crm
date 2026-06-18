@@ -8,6 +8,12 @@ import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
 import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload, IconX } from '@tabler/icons-react'
 
+const DUE_TYPE_LABELS: any = {
+  standard_3: 'มาตรฐาน (ครบกำหนด 3 วัน)',
+  vip_30: 'VIP (ครบกำหนด 30 วัน)',
+  fifth_next_month: 'ครบกำหนดวันที่ 5 เดือนถัดไป',
+}
+
 export default function Customers() {
   const { user, role, ready, logout } = useAuth('/customers')
   const [customers, setCustomers] = useState<any[]>([])
@@ -17,7 +23,7 @@ export default function Customers() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, note: '' })
+  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, due_type: 'standard_3', note: '' })
 
   const [showDebtModal, setShowDebtModal] = useState(false)
   const [debtCustomer, setDebtCustomer] = useState<any>(null)
@@ -52,13 +58,13 @@ export default function Customers() {
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, note: '' })
+    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, due_type: 'standard_3', note: '' })
     setShowModal(true)
   }
 
   const openEdit = (c: any) => {
     setEditingId(c.id)
-    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, opening_balance: c.opening_balance || 0, note: c.note || '' })
+    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, opening_balance: c.opening_balance || 0, due_type: c.due_type || 'standard_3', note: c.note || '' })
     setShowModal(true)
   }
 
@@ -148,6 +154,7 @@ export default function Customers() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                 <option value="">ทั้งหมด</option>
                 <option value="general">ทั่วไป</option>
+                <option value="vip">VIP</option>
                 <option value="credit">เครดิต</option>
               </select>
             </div>
@@ -172,8 +179,8 @@ export default function Customers() {
                 <span className="font-medium text-gray-700">{c.customer_name}</span>
                 <span className="text-gray-500">{c.line_name || '-'}</span>
                 <span className="text-gray-500">{c.phone || '-'}</span>
-                <span><span className={`text-xs px-2 py-0.5 rounded-full ${c.type === 'credit' ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
-                  {c.type === 'credit' ? 'เครดิต' : 'ทั่วไป'}
+                <span><span className={`text-xs px-2 py-0.5 rounded-full ${c.type === 'credit' ? 'bg-amber-50 text-amber-600' : c.type === 'vip' ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
+                  {c.type === 'credit' ? 'เครดิต' : c.type === 'vip' ? 'VIP' : 'ทั่วไป'}
                 </span></span>
                 <span>
                   {c.opening_balance > 0 ? (
@@ -222,6 +229,7 @@ export default function Customers() {
                 <select value={form.type} onChange={(e) => setForm({...form, type: e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                   <option value="general">ทั่วไป</option>
+                  <option value="vip">VIP</option>
                   <option value="credit">เครดิต</option>
                 </select>
               </div>
@@ -231,6 +239,17 @@ export default function Customers() {
                   <input type="number" value={form.credit_limit} onChange={(e) => setForm({...form, credit_limit: Number(e.target.value)})}
                     placeholder="ปล่อยว่างได้ถ้าไม่กำหนดวงเงิน"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                </div>
+              )}
+              {(form.type === 'credit' || form.type === 'vip') && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                  <label className="text-xs text-blue-700 font-medium mb-1 block">เงื่อนไขครบกำหนดชำระ</label>
+                  <select value={form.due_type} onChange={(e) => setForm({...form, due_type: e.target.value})}
+                    className="w-full border border-blue-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <option value="standard_3">มาตรฐาน (3 วัน)</option>
+                    <option value="vip_30">VIP (30 วัน)</option>
+                    <option value="fifth_next_month">วันที่ 5 ของเดือนถัดไป</option>
+                  </select>
                 </div>
               )}
               <div className="bg-red-50 border border-red-100 rounded-xl p-3">
