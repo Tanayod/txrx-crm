@@ -66,11 +66,18 @@ export default function Payments() {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
   }
 
+  const getNormalTotalWithVat = (p: any) => {
+    const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
+    if (!p?.use_vat) return workerTotal
+    if (p.vat_mode === 'inclusive') return workerTotal // ราคารวม VAT แล้ว ไม่บวกซ้ำ
+    return Math.round(workerTotal * 1.07 * 100) / 100 // ราคา + VAT บวกเพิ่ม
+  }
+
   const getGrandTotal = (b: any) => {
     const p = b.payments?.[0]
-    const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
+    const normalWithVat = getNormalTotalWithVat(p)
     const specialTotal = getSpecialTotal(b)
-    return workerTotal + specialTotal
+    return Math.round((normalWithVat + specialTotal) * 100) / 100
   }
 
   const handleOpenModal = (booking: any) => {
@@ -355,10 +362,10 @@ export default function Payments() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-9 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
             <span>แรงงาน</span><span>ราคา/คน</span><span>ยอดปกติ</span>
-            <span>ตรวจพิเศษ</span><span>สถานะ</span><span></span>
+            <span>ตรวจพิเศษ/รวม</span><span>รับชำระจริง</span><span>สถานะ</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -374,7 +381,7 @@ export default function Payments() {
             const specialAmt = getSpecialTotal(b)
             const grandTotal = getGrandTotal(b)
             return (
-              <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
+              <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
                 <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                 <div>
                   <p className="font-medium text-gray-800 text-xs">{b.customers?.customer_name}</p>
@@ -383,14 +390,20 @@ export default function Payments() {
                 <span className="text-gray-500 text-xs">{b.booking_date}</span>
                 <span className="text-gray-700 text-xs">{workerCount > 0 ? `${workerCount} คน` : '-'}</span>
                 <span className="text-gray-700 text-xs">{p?.price_per_worker > 0 ? `฿${p.price_per_worker}` : '-'}</span>
-                <span className="text-gray-700 text-xs">{normalAmt > 0 ? `฿${normalAmt.toLocaleString()}` : '-'}</span>
+                <span className="text-gray-700 text-xs">{normalAmt > 0 ? `฿${normalAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</span>
                 <div>
                   {specialAmt > 0 ? (
                     <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
-                      <IconMicroscope size={10}/>฿{specialAmt.toLocaleString()}
+                      <IconMicroscope size={10}/>฿{specialAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </span>
                   ) : <span className="text-xs text-gray-300">-</span>}
-                  {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString()}</p>}
+                  {p?.use_vat && <span className="text-xs text-sky-500 mt-0.5 block">รวม VAT</span>}
+                  {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>}
+                </div>
+                <div>
+                  {p?.amount_received > 0 ? (
+                    <p className="text-xs font-semibold text-emerald-600">฿{p.amount_received.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  ) : <span className="text-xs text-gray-300">-</span>}
                 </div>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
                 <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก</button>
@@ -402,7 +415,7 @@ export default function Payments() {
 
       {showModal && selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
             <div className="p-6 border-b border-gray-100">
               <p className="text-base font-semibold text-gray-800">{selected.customers?.customer_name}</p>
               <p className="text-xs text-gray-400 mt-0.5">{selected.case_number} · {selected.booking_date}</p>
@@ -459,23 +472,23 @@ export default function Payments() {
                 <div className="space-y-1.5 bg-white rounded-lg p-3 border border-blue-200">
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>ยอดตรวจสุขภาพปกติ {form.use_vat && form.vat_mode === 'inclusive' ? '(ก่อน VAT)' : ''}</span>
-                    <span className="font-medium text-gray-700">฿{vatBase.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                    <span className="font-medium text-gray-700">฿{vatBase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   {form.use_vat && (
                     <div className="flex justify-between text-xs text-sky-600">
                       <span>VAT 7%</span>
-                      <span className="font-medium">฿{vatAmount.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                      <span className="font-medium">฿{vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}
                   {specialAmountSelected > 0 && (
                     <div className="flex justify-between text-xs text-purple-600">
                       <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ</span>
-                      <span className="font-medium">฿{specialAmountSelected.toLocaleString()}</span>
+                      <span className="font-medium">฿{specialAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}
                   <div className="flex justify-between border-t border-gray-100 pt-1.5">
                     <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งหมด</span>
-                    <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                    <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                 </div>
               </div>

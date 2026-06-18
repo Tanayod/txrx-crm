@@ -163,7 +163,7 @@ export default function Invoices() {
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                   <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
                   <span className="text-gray-500">{b.booking_date}</span>
-                  <span className="text-gray-700">{p?.amount_received ? `฿${p.amount_received.toLocaleString()}` : '-'}</span>
+                  <span className="text-gray-700">{p?.amount_received ? `฿${p.amount_received.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</span>
                   <button onClick={() => handleOpenInvoice(b)} className="flex items-center gap-1.5 text-xs text-[#185FA5] hover:underline justify-end">
                     <IconPrinter size={13} /> ออกใบวางบิล
                   </button>
@@ -247,28 +247,28 @@ export default function Invoices() {
                       className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-[#185FA5] print:border-0 print:text-right"
                       placeholder="0" />
                   </div>
-                  <p className="text-right font-medium text-gray-800">฿{subtotal.toLocaleString()}</p>
+                  <p className="text-right font-medium text-gray-800">฿{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                 </div>
               </div>
 
               <div className="flex justify-end mb-8">
                 <div className="w-72 bg-gray-50 rounded-xl p-4 space-y-2">
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>ยอดก่อน VAT</span><span>฿{subtotal.toLocaleString()}</span>
+                    <span>ยอดก่อน VAT</span><span>฿{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm text-gray-600">
                     <label className="flex items-center gap-2 cursor-pointer print:hidden">
                       <input type="checkbox" checked={useVat} onChange={(e) => setUseVat(e.target.checked)} className="rounded"/>
                       <span>VAT 7%</span>
                     </label>
-                    <span className={useVat ? 'text-gray-700' : 'text-gray-300'}>฿{vatAmount.toLocaleString()}</span>
+                    <span className={useVat ? 'text-gray-700' : 'text-gray-300'}>฿{vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>ยอดรับชำระแล้ว</span><span className="text-green-600">฿{paid.toLocaleString()}</span>
+                    <span>ยอดรับชำระแล้ว</span><span className="text-green-600">฿{paid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="border-t border-gray-200 pt-2 flex justify-between font-medium text-base">
                     <span className="text-gray-800">ยอดคงค้าง</span>
-                    <span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{remaining.toLocaleString()}</span>
+                    <span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{remaining.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                 </div>
               </div>
