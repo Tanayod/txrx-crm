@@ -93,6 +93,16 @@ export default function Medical() {
     }
     setUploading(false)
   }
+  const handleDeleteCertificate = async (cert: any) => {
+  if (!confirm(`ลบไฟล์ ${cert.file_name} ใช่ไหม?`)) return
+
+  await supabase
+    .from('certificates')
+    .delete()
+    .eq('id', cert.id)
+
+  fetchCertificates(cert.case_id)
+}
 
   const getCertStatus = (booking: any) => {
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
@@ -328,12 +338,22 @@ export default function Medical() {
             </button>
             <div className="border-t border-gray-100 pt-4">
               <p className="text-xs font-medium text-gray-700 mb-2">ใบรับรองแพทย์</p>
-              {certificates.map((cert) => (
-                <div key={cert.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mb-1.5">
-                  <IconCheck size={13} className="text-green-600 flex-shrink-0" />
-                  <a href={cert.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate">{cert.file_name}</a>
-                </div>
-              ))}
+             {certificates.map((cert) => (
+  <div key={cert.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mb-1.5">
+    <IconCheck size={13} className="text-green-600 flex-shrink-0" />
+
+    <a href={cert.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate flex-1">
+      {cert.file_name}
+    </a>
+
+    <button
+      onClick={() => handleDeleteCertificate(cert)}
+      className="text-xs text-red-500 hover:underline flex-shrink-0"
+    >
+      ลบ
+    </button>
+  </div>
+))}
               <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
                 <IconUpload size={15} />
                 {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์ใบรับรองแพทย์'}
