@@ -15,7 +15,9 @@ export default function Invoices() {
   const [showInvoice, setShowInvoice] = useState(false)
   const [pricePerHead, setPricePerHead] = useState(0)
   const [useVat, setUseVat] = useState(false)
+  const [vatMode, setVatMode] = useState('exclusive')
   const [billingAddress, setBillingAddress] = useState('')
+  const [savingVat, setSavingVat] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
@@ -50,11 +52,40 @@ export default function Invoices() {
     const p = booking.payments?.[0]
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
     const count = mc?.actual_count || booking.booked_count || 0
-    const total = p?.amount_received || 0
-    setPricePerHead(count > 0 ? Math.round(total / count) : 0)
-    setUseVat(false)
+    // ถ้ามี price_per_worker บันทึกไว้แล้วในหน้าการเงิน ใช้ค่านั้นก่อน ไม่งั้นคำนวณจากยอดรับจริง/จำนวนคน
+    if (p?.price_per_worker > 0) {
+      setPricePerHead(p.price_per_worker)
+    } else {
+      const total = p?.amount_received || 0
+      setPricePerHead(count > 0 ? Math.round((total / count) * 100) / 100 : 0)
+    }
+    setUseVat(p?.use_vat || false)
+    setVatMode(p?.vat_mode || 'exclusive')
     setBillingAddress('')
     setShowInvoice(true)
+  }
+
+  // บันทึกค่าราคา/VAT ที่ตั้งในใบวางบิล กลับเข้า payments เพื่อให้หน้าการเงินใช้ค่าเดียวกัน
+  const handleSyncToPayments = async () => {
+    if (!selected) return
+    setSavingVat(true)
+    const p = selected.payments?.[0]
+    const payload = {
+      worker_count: actualCount,
+      price_per_worker: pricePerHead,
+      use_vat: useVat,
+      vat_mode: vatMode,
+      total_amount: total,
+      invoice_no: getInvoiceNo(selected),
+    }
+    if (p?.id) {
+      await supabase.from('payments').update(payload).eq('id', p.id)
+    } else {
+      await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id, payment_status: 'ยังไม่ชำระ' }])
+    }
+    setSavingVat(false)
+    fetchBookings()
+    alert('บันทึกยอดและ VAT เข้าหน้าการเงินแล้ว')
   }
 
   const getInvoiceNo = (booking: any) => {
@@ -65,11 +96,12 @@ export default function Invoices() {
   const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
   const mc = selected ? (Array.isArray(selected.medical_cases) ? selected.medical_cases?.[0] : selected.medical_cases) : null
   const actualCount = mc?.actual_count || selected?.booked_count || 0
-  const subtotal = actualCount * pricePerHead
-  const vatAmount = useVat ? Math.round(subtotal * 0.07) : 0
-  const total = subtotal + vatAmount
+  const rawTotal = actualCount * pricePerHead
+  const subtotal = useVat && vatMode === 'inclusive' ? Math.round((rawTotal / 1.07) * 100) / 100 : rawTotal
+  const vatAmount = useVat ? Math.round((rawTotal - subtotal) * 100) / 100 || Math.round(subtotal * 0.07 * 100) / 100 : 0
+  const total = useVat && vatMode === 'inclusive' ? rawTotal : Math.round((subtotal + vatAmount) * 100) / 100
   const paid = selected?.payments?.[0]?.amount_received || 0
-  const remaining = total - paid
+  const remaining = Math.round((total - paid) * 100) / 100
 
   const filtered = bookings.filter(b => {
     if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
@@ -256,11 +288,26 @@ export default function Invoices() {
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>ยอดก่อน VAT</span><span>฿{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
-                  <div className="flex items-center justify-between text-sm text-gray-600">
-                    <label className="flex items-center gap-2 cursor-pointer print:hidden">
+                  <div className="print:hidden">
+                    <label className="flex items-center gap-2 cursor-pointer mb-1.5">
                       <input type="checkbox" checked={useVat} onChange={(e) => setUseVat(e.target.checked)} className="rounded"/>
-                      <span>VAT 7%</span>
+                      <span className="text-sm text-gray-600">คิด VAT 7%</span>
                     </label>
+                    {useVat && (
+                      <div className="flex gap-3 pl-6 mb-1.5">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input type="radio" checked={vatMode === 'exclusive'} onChange={() => setVatMode('exclusive')} className="text-[#185FA5]"/>
+                          <span className="text-xs text-gray-600">ราคา + VAT</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input type="radio" checked={vatMode === 'inclusive'} onChange={() => setVatMode('inclusive')} className="text-[#185FA5]"/>
+                          <span className="text-xs text-gray-600">ราคารวม VAT แล้ว</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-gray-600 print:flex">
+                    <span>VAT 7%</span>
                     <span className={useVat ? 'text-gray-700' : 'text-gray-300'}>฿{vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
@@ -277,6 +324,10 @@ export default function Invoices() {
                 <p className="text-xs text-gray-400">ขอบคุณที่ใช้บริการ Txrx Service</p>
                 <div className="flex gap-2">
                   <button onClick={() => setShowInvoice(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
+                  <button onClick={handleSyncToPayments} disabled={savingVat}
+                    className="px-4 py-2 text-sm border border-[#185FA5] text-[#185FA5] rounded-lg hover:bg-blue-50 disabled:opacity-50">
+                    {savingVat ? 'กำลังบันทึก...' : 'บันทึกเข้าหน้าการเงิน'}
+                  </button>
                   <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C]">
                     <IconPrinter size={15} /> พิมพ์ / PDF
                   </button>
