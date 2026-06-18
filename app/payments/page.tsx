@@ -21,6 +21,7 @@ export default function Payments() {
     payment_status: 'ชำระเงินแล้ว', invoice_no: '',
     worker_count: 0, price_per_worker: 0,
     ref_no: '', note: '',
+    use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
   const [splitSource, setSplitSource] = useState({ method: 'transfer' })
@@ -86,13 +87,25 @@ export default function Payments() {
       price_per_worker: p?.price_per_worker || 0,
       ref_no: p?.ref_no || '',
       note: p?.note || '',
+      use_vat: p?.use_vat || false,
+      vat_mode: p?.vat_mode || 'exclusive',
     })
     setShowModal(true)
   }
 
   const normalTotal = form.worker_count * form.price_per_worker
   const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
-  const grandTotalSelected = normalTotal + specialAmountSelected
+  // VAT คิดจากยอดตรวจสุขภาพปกติ (normalTotal) เท่านั้น
+  const vatBase = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? normalTotal / 1.07 : normalTotal)
+    : normalTotal
+  const vatAmount = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? normalTotal - vatBase : normalTotal * 0.07)
+    : 0
+  const normalTotalWithVat = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? normalTotal : normalTotal + vatAmount)
+    : normalTotal
+  const grandTotalSelected = normalTotalWithVat + specialAmountSelected
 
   const handleSave = async () => {
     const p = selected?.payments?.[0]
@@ -106,6 +119,8 @@ export default function Payments() {
       total_amount: grandTotalSelected,
       ref_no: form.ref_no,
       note: form.note,
+      use_vat: form.use_vat,
+      vat_mode: form.vat_mode,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
     }
     if (p?.id) {
@@ -116,43 +131,20 @@ export default function Payments() {
     fetchBookings(); setShowModal(false)
   }
 
- const handleUploadSlip = async (e: any) => {
-  const file = e.target.files[0]
-  if (!file) return
-
-  setUploading(true)
-
-  const ext = file.name.split('.').pop()
-  const fileName = `${selected.id}_slip_${Date.now()}.${ext}`
-
-  const { data, error } = await supabase.storage
-    .from('certificates')
-    .upload(fileName, file)
-
-  console.log('UPLOAD ERROR', error)
-
-  if (!error && data) {
-    const { data: urlData } = supabase.storage
-      .from('certificates')
-      .getPublicUrl(fileName)
-
-    const p = selected?.payments?.[0]
-
-    if (p?.id) {
-      await supabase
-        .from('payments')
-        .update({
-          slip_url: urlData.publicUrl,
-          is_verified: true
-        })
-        .eq('id', p.id)
+  const handleUploadSlip = async (e: any) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    const fileName = `${selected.id}_slip_${Date.now()}_${file.name}`
+    const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
+    if (!error && data) {
+      const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
+      const p = selected?.payments?.[0]
+      if (p?.id) await supabase.from('payments').update({ slip_url: urlData.publicUrl, is_verified: true }).eq('id', p.id)
+      fetchBookings()
     }
-
-    fetchBookings()
+    setUploading(false)
   }
-
-  setUploading(false)
-}
 
   const openSplitModal = () => {
     const unpaidBookings = bookings.filter(b => {
@@ -410,7 +402,7 @@ export default function Payments() {
 
       {showModal && selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
             <div className="p-6 border-b border-gray-100">
               <p className="text-base font-semibold text-gray-800">{selected.customers?.customer_name}</p>
               <p className="text-xs text-gray-400 mt-0.5">{selected.case_number} · {selected.booking_date}</p>
@@ -440,11 +432,41 @@ export default function Payments() {
                       className="w-full border border-blue-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
                   </div>
                 </div>
+                <div className="bg-white rounded-lg p-3 border border-blue-200 mb-3">
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input type="checkbox" checked={form.use_vat}
+                      onChange={(e) => setForm({...form, use_vat: e.target.checked})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs font-medium text-gray-700">คิด VAT 7% (เฉพาะยอดตรวจปกติ)</span>
+                  </label>
+                  {form.use_vat && (
+                    <div className="flex gap-3 pl-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={form.vat_mode === 'exclusive'}
+                          onChange={() => setForm({...form, vat_mode: 'exclusive'})}
+                          className="text-[#185FA5]"/>
+                        <span className="text-xs text-gray-600">ราคา + VAT (บวกเพิ่ม)</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={form.vat_mode === 'inclusive'}
+                          onChange={() => setForm({...form, vat_mode: 'inclusive'})}
+                          className="text-[#185FA5]"/>
+                        <span className="text-xs text-gray-600">ราคารวม VAT แล้ว</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-1.5 bg-white rounded-lg p-3 border border-blue-200">
                   <div className="flex justify-between text-xs text-gray-500">
-                    <span>ยอดตรวจสุขภาพปกติ</span>
-                    <span className="font-medium text-gray-700">฿{normalTotal.toLocaleString()}</span>
+                    <span>ยอดตรวจสุขภาพปกติ {form.use_vat && form.vat_mode === 'inclusive' ? '(ก่อน VAT)' : ''}</span>
+                    <span className="font-medium text-gray-700">฿{vatBase.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
                   </div>
+                  {form.use_vat && (
+                    <div className="flex justify-between text-xs text-sky-600">
+                      <span>VAT 7%</span>
+                      <span className="font-medium">฿{vatAmount.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
                   {specialAmountSelected > 0 && (
                     <div className="flex justify-between text-xs text-purple-600">
                       <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ</span>
@@ -453,7 +475,7 @@ export default function Payments() {
                   )}
                   <div className="flex justify-between border-t border-gray-100 pt-1.5">
                     <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งหมด</span>
-                    <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString()}</span>
+                    <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
                   </div>
                 </div>
               </div>
@@ -606,5 +628,3 @@ export default function Payments() {
     </div>
   )
 }
-
-
