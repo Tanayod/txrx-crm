@@ -116,21 +116,43 @@ export default function Payments() {
     fetchBookings(); setShowModal(false)
   }
 
-  const handleUploadSlip = async (e: any) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setUploading(true)
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const fileName = `${selected.id}_slip_${Date.now()}_${safeName}`
-    const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
-      const p = selected?.payments?.[0]
-      if (p?.id) await supabase.from('payments').update({ slip_url: urlData.publicUrl, is_verified: true }).eq('id', p.id)
-      fetchBookings()
+ const handleUploadSlip = async (e: any) => {
+  const file = e.target.files[0]
+  if (!file) return
+
+  setUploading(true)
+
+  const ext = file.name.split('.').pop()
+  const fileName = `${selected.id}_slip_${Date.now()}.${ext}`
+
+  const { data, error } = await supabase.storage
+    .from('certificates')
+    .upload(fileName, file)
+
+  console.log('UPLOAD ERROR', error)
+
+  if (!error && data) {
+    const { data: urlData } = supabase.storage
+      .from('certificates')
+      .getPublicUrl(fileName)
+
+    const p = selected?.payments?.[0]
+
+    if (p?.id) {
+      await supabase
+        .from('payments')
+        .update({
+          slip_url: urlData.publicUrl,
+          is_verified: true
+        })
+        .eq('id', p.id)
     }
-    setUploading(false)
+
+    fetchBookings()
   }
+
+  setUploading(false)
+}
 
   const openSplitModal = () => {
     const unpaidBookings = bookings.filter(b => {
@@ -584,3 +606,5 @@ export default function Payments() {
     </div>
   )
 }
+
+
