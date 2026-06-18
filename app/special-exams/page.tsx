@@ -20,12 +20,16 @@ export default function SpecialExams() {
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteExamTypeId, setDeleteExamTypeId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [bookingSearch, setBookingSearch] = useState('')
+  const [newExamName, setNewExamName] = useState('')
+  const [newExamPrice, setNewExamPrice] = useState('')
 
   const [form, setForm] = useState({
     customer_id: '', customer_name_display: '',
@@ -65,14 +69,23 @@ export default function SpecialExams() {
     if (data) setLocations(data)
   }
 
+  // ดึง booking ทั้งหมดของลูกค้า (ไม่จำกัด 20 รายการ) เพื่อให้ค้นหาเจอแม้เป็น booking เก่า
   async function fetchCustomerBookings(customerId: string) {
-    const { data } = await supabase
-      .from('bookings')
-      .select('id, case_number, booking_date, location_name, shift')
-      .eq('customer_id', customerId)
-      .order('booking_date', { ascending: false })
-      .limit(20)
-    if (data) setCustomerBookings(data)
+    let all: any[] = []
+    let from = 0
+    while (true) {
+      const { data: chunk } = await supabase
+        .from('bookings')
+        .select('id, case_number, booking_date, location_name, shift')
+        .eq('customer_id', customerId)
+        .order('booking_date', { ascending: false })
+        .range(from, from + 999)
+      if (!chunk || chunk.length === 0) break
+      all = [...all, ...chunk]
+      if (chunk.length < 1000) break
+      from += 1000
+    }
+    setCustomerBookings(all)
   }
 
   const openCreate = () => {
@@ -86,6 +99,7 @@ export default function SpecialExams() {
     })
     setCustomerSearch('')
     setCustomerBookings([])
+    setBookingSearch('')
     setShowModal(true)
   }
 
@@ -114,6 +128,7 @@ export default function SpecialExams() {
     })
     if (exam.customer_id) fetchCustomerBookings(exam.customer_id)
     setCustomerSearch('')
+    setBookingSearch('')
     setShowModal(true)
   }
 
@@ -121,6 +136,7 @@ export default function SpecialExams() {
     setForm({...form, customer_id: c.id, customer_name_display: c.customer_name, booking_id: ''})
     setCustomerSearch('')
     setShowCustomerDropdown(false)
+    setBookingSearch('')
     fetchCustomerBookings(c.id)
   }
 
@@ -140,6 +156,26 @@ export default function SpecialExams() {
     updated[idx].price_per_unit = price
     updated[idx].subtotal = updated[idx].quantity * price
     setForm({ ...form, items: updated })
+  }
+
+  // เพิ่มรายการตรวจใหม่ระหว่างกรอกฟอร์ม — บันทึกเข้า exam_types ถาวร แล้วเพิ่มเข้า items ของฟอร์มทันที
+  const handleAddNewExamType = async () => {
+    if (!newExamName.trim()) return alert('กรุณากรอกชื่อรายการตรวจ')
+    const price = Number(newExamPrice.replace(/\D/g, '')) || 0
+    const { data, error } = await supabase
+      .from('exam_types')
+      .insert([{ name: newExamName.trim(), price, is_active: true, sort_order: examTypes.length + 1 }])
+      .select()
+      .single()
+    if (!error && data) {
+      setExamTypes([...examTypes, data])
+      setForm({
+        ...form,
+        items: [...form.items, { exam_type_id: data.id, exam_name: data.name, price_per_unit: data.price, quantity: 0, subtotal: 0 }]
+      })
+      setNewExamName('')
+      setNewExamPrice('')
+    }
   }
 
   const totalAmount = form.items.reduce((s, i) => s + (i.subtotal || 0), 0)
@@ -196,12 +232,24 @@ export default function SpecialExams() {
     fetchExamTypes()
   }
 
+  // ลบรายการตรวจ (soft delete ด้วย is_active=false เพื่อไม่กระทบประวัติเก่าที่เคยบันทึกไปแล้ว)
+  const handleDeleteExamType = async () => {
+    if (!deleteExamTypeId) return
+    await supabase.from('exam_types').update({ is_active: false }).eq('id', deleteExamTypeId)
+    setDeleteExamTypeId(null)
+    fetchExamTypes()
+  }
+
   const filtered = exams.filter(e => {
     if (search && !e.customers?.customer_name?.includes(search)) return false
     if (filterDateFrom && e.exam_date < filterDateFrom) return false
     if (filterDateTo && e.exam_date > filterDateTo) return false
     return true
   })
+
+  const filteredBookings = customerBookings.filter(b =>
+    !bookingSearch || b.case_number?.toLowerCase().includes(bookingSearch.toLowerCase())
+  )
 
   const exportExcel = () => {
     const rows: any[] = []
@@ -309,7 +357,7 @@ export default function SpecialExams() {
                   {items.length > 2 && <span className="text-xs text-gray-400">+{items.length-2}</span>}
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-800">฿{e.total_amount?.toLocaleString()}</span>
+                  <span className="text-xs font-bold text-gray-800">฿{e.total_amount?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   <div className="flex gap-1.5">
                     <button onClick={() => openEdit(e)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={14}/></button>
                     <button onClick={() => setDeleteId(e.id)} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={14}/></button>
@@ -353,30 +401,40 @@ export default function SpecialExams() {
                 )}
               </div>
 
-              {/* เลือก Booking ที่ผูก */}
+              {/* เลือก Booking ที่ผูก — เพิ่มช่องค้นหาเลขจอง */}
               {form.customer_id && (
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">ผูกกับการจอง (ถ้ามี)</label>
                   {customerBookings.length === 0 ? (
                     <p className="text-xs text-gray-400 py-2">ไม่พบรายการจองของลูกค้านี้</p>
                   ) : (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden max-h-36 overflow-y-auto">
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setForm({...form, booking_id: ''})}>
-                        <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${!form.booking_id ? 'border-[#185FA5] bg-[#185FA5]' : 'border-gray-300'}`}/>
-                        <span className="text-xs text-gray-500">ไม่ผูกกับการจอง</span>
+                    <>
+                      <div className="relative mb-2">
+                        <IconSearch size={13} className="absolute left-2.5 top-2 text-gray-400"/>
+                        <input value={bookingSearch} onChange={(e) => setBookingSearch(e.target.value)}
+                          placeholder="ค้นหาเลขจอง..."
+                          className="w-full pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
                       </div>
-                      {customerBookings.map(b => (
-                        <div key={b.id} onClick={() => handleSelectBooking(b)}
-                          className={`flex items-center gap-2 px-3 py-2 border-b border-gray-50 cursor-pointer hover:bg-blue-50 ${form.booking_id === b.id ? 'bg-blue-50' : ''}`}>
-                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${form.booking_id === b.id ? 'border-[#185FA5] bg-[#185FA5]' : 'border-gray-300'}`}/>
-                          <div>
-                            <span className="text-xs font-medium text-gray-700 font-mono">{b.case_number}</span>
-                            <span className="text-xs text-gray-400 ml-2">{b.booking_date} · {b.location_name || '-'} · {b.shift}</span>
-                          </div>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden max-h-36 overflow-y-auto">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => setForm({...form, booking_id: ''})}>
+                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${!form.booking_id ? 'border-[#185FA5] bg-[#185FA5]' : 'border-gray-300'}`}/>
+                          <span className="text-xs text-gray-500">ไม่ผูกกับการจอง</span>
                         </div>
-                      ))}
-                    </div>
+                        {filteredBookings.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-3">ไม่พบเลขจองที่ค้นหา</p>
+                        ) : filteredBookings.map(b => (
+                          <div key={b.id} onClick={() => handleSelectBooking(b)}
+                            className={`flex items-center gap-2 px-3 py-2 border-b border-gray-50 cursor-pointer hover:bg-blue-50 ${form.booking_id === b.id ? 'bg-blue-50' : ''}`}>
+                            <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${form.booking_id === b.id ? 'border-[#185FA5] bg-[#185FA5]' : 'border-gray-300'}`}/>
+                            <div>
+                              <span className="text-xs font-medium text-gray-700 font-mono">{b.case_number}</span>
+                              <span className="text-xs text-gray-400 ml-2">{b.booking_date} · {b.location_name || '-'} · {b.shift}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               )}
@@ -426,13 +484,26 @@ export default function SpecialExams() {
                         placeholder="0"
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-[#185FA5] w-full"/>
                       <span className={`text-xs font-bold text-right ${item.subtotal > 0 ? 'text-[#185FA5]' : 'text-gray-300'}`}>
-                        {item.subtotal > 0 ? `฿${item.subtotal.toLocaleString()}` : '-'}
+                        {item.subtotal > 0 ? `฿${item.subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}
                       </span>
                     </div>
                   ))}
+                  {/* เพิ่มรายการตรวจใหม่ */}
+                  <div className="grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-gray-50 bg-emerald-50/40 items-center">
+                    <input value={newExamName} onChange={(e) => setNewExamName(e.target.value)}
+                      placeholder="+ ชื่อรายการตรวจใหม่..."
+                      className="col-span-2 border border-emerald-200 bg-white rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"/>
+                    <input value={newExamPrice} onChange={(e) => setNewExamPrice(e.target.value.replace(/\D/g,''))}
+                      placeholder="ราคา"
+                      className="border border-emerald-200 bg-white rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-emerald-400"/>
+                    <button type="button" onClick={handleAddNewExamType}
+                      className="col-span-2 text-xs bg-emerald-500 text-white rounded-lg py-1.5 hover:bg-emerald-600 font-medium">
+                      + เพิ่มรายการ
+                    </button>
+                  </div>
                   <div className="grid grid-cols-5 gap-2 px-4 py-3 bg-gray-800">
                     <span className="col-span-4 text-xs font-bold text-white">รวมทั้งหมด</span>
-                    <span className="text-sm font-bold text-emerald-400 text-right">฿{totalAmount.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-emerald-400 text-right">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                 </div>
               </div>
@@ -448,17 +519,17 @@ export default function SpecialExams() {
               <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSave} disabled={saving}
                 className="px-5 py-2.5 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50 font-medium transition-colors">
-                {saving ? 'กำลังบันทึก...' : `บันทึก (฿${totalAmount.toLocaleString()})`}
+                {saving ? 'กำลังบันทึก...' : `บันทึก (฿${totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})`}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal ตั้งค่าราคา */}
+      {/* Modal ตั้งค่าราคา — เพิ่มปุ่มลบรายการ */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <p className="text-base font-semibold text-gray-800">ตั้งค่าราคาตรวจพิเศษ</p>
               <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-gray-600"><IconX size={20}/></button>
@@ -473,6 +544,9 @@ export default function SpecialExams() {
                       onBlur={(e) => handleUpdateExamTypePrice(t.id, Number(e.target.value.replace(/\D/g,'')))}
                       className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
                   </div>
+                  <button onClick={() => setDeleteExamTypeId(t.id)} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
+                    <IconTrash size={15}/>
+                  </button>
                 </div>
               ))}
             </div>
@@ -492,6 +566,19 @@ export default function SpecialExams() {
             <div className="flex gap-2 justify-end">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">ลบ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteExamTypeId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl">
+            <p className="text-base font-semibold text-gray-800 mb-2">ยืนยันการลบรายการตรวจ</p>
+            <p className="text-sm text-gray-500 mb-5">รายการนี้จะถูกซ่อนจากตัวเลือกใหม่ แต่ประวัติเดิมที่บันทึกไปแล้วจะไม่หาย ต้องการลบใช่ไหม?</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteExamTypeId(null)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
+              <button onClick={handleDeleteExamType} className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">ลบ</button>
             </div>
           </div>
         </div>
