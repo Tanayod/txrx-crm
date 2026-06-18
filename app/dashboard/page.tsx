@@ -37,6 +37,9 @@ export default function Dashboard() {
   const [inactiveCustomers, setInactiveCustomers] = useState<{ mou: any[], renew: any[] }>({ mou: [], renew: [] })
   const [debtByService, setDebtByService] = useState<any[]>([])
   const [totalDebt, setTotalDebt] = useState(0)
+  const [simSummary, setSimSummary] = useState<any[]>([])
+  const [specialExamSummary, setSpecialExamSummary] = useState<any[]>([])
+  const [specialExamTotal, setSpecialExamTotal] = useState(0)
 
   const now = new Date()
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`)
@@ -238,6 +241,66 @@ export default function Dashboard() {
     debtSum += openingSum
     setDebtByService(Object.entries(debtByType).sort((a: any, b: any) => b[1] - a[1]).map(([name, amount]) => ({ name, amount })))
     setTotalDebt(debtSum)
+
+    // ✅ สรุปยอดขายซิมตาม package + ประเภท (ตามช่วงที่กรอง)
+    let allSimItems: any[] = []
+    let simFrom = 0
+    while (true) {
+      let q = supabase.from('sim_items').select('sim_package, sim_type, sim_count, bookings(booking_date)')
+      const { data: chunk } = await q.range(simFrom, simFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allSimItems = [...allSimItems, ...chunk]
+      if (chunk.length < 1000) break
+      simFrom += 1000
+    }
+    const simInRange = allSimItems.filter((s: any) => {
+      const d = s.bookings?.booking_date
+      if (!d) return false
+      if (from && d < from) return false
+      if (to && d > to) return false
+      return true
+    })
+    const simGroup: any = {}
+    simInRange.forEach((s: any) => {
+      const key = `${s.sim_package || 'ไม่ระบุ'}|${s.sim_type || 'ไม่ระบุ'}`
+      simGroup[key] = (simGroup[key] || 0) + (s.sim_count || 0)
+    })
+    setSimSummary(Object.entries(simGroup).sort((a: any, b: any) => b[1] - a[1]).map(([key, count]) => {
+      const [pkg, type] = key.split('|')
+      return { package: pkg, type, count }
+    }))
+
+    // ✅ สรุปยอดตรวจพิเศษ (ตามช่วงที่กรอง)
+    let allSpecialItems: any[] = []
+    let spFrom = 0
+    while (true) {
+      const { data: chunk } = await supabase
+        .from('special_exam_items')
+        .select('exam_name, quantity, subtotal, special_exams(exam_date)')
+        .range(spFrom, spFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allSpecialItems = [...allSpecialItems, ...chunk]
+      if (chunk.length < 1000) break
+      spFrom += 1000
+    }
+    const specialInRange = allSpecialItems.filter((s: any) => {
+      const d = s.special_exams?.exam_date
+      if (!d) return false
+      if (from && d < from) return false
+      if (to && d > to) return false
+      return true
+    })
+    const specialGroup: any = {}
+    let specialSum = 0
+    specialInRange.forEach((s: any) => {
+      const name = s.exam_name || 'ไม่ระบุ'
+      if (!specialGroup[name]) specialGroup[name] = { count: 0, amount: 0 }
+      specialGroup[name].count += s.quantity || 0
+      specialGroup[name].amount += s.subtotal || 0
+      specialSum += s.subtotal || 0
+    })
+    setSpecialExamSummary(Object.entries(specialGroup).sort((a: any, b: any) => b[1].amount - a[1].amount).map(([name, v]: any) => ({ name, count: v.count, amount: v.amount })))
+    setSpecialExamTotal(specialSum)
 
     // Pending payments
     const { data: allCustomers } = await supabase.from('customers').select('id')
@@ -557,6 +620,53 @@ export default function Dashboard() {
               })}
             </div>
           )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mt-4">
+          <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">📱 สรุปยอดขายซิมตามแพ็กเกจ</p>
+            {simSummary.length === 0 && !loading ? (
+              <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูลในช่วงนี้</p>
+            ) : (
+              <div className="space-y-2">
+                {simSummary.map((s, i) => (
+                  <div key={i} className="flex justify-between items-center bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">฿{s.package}/เดือน</span>
+                      <span className="text-xs text-gray-400 ml-2">{s.type}</span>
+                    </div>
+                    <span className="text-sm font-bold text-purple-600">{s.count} ซิม</span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                  <span className="text-xs font-semibold text-gray-600">รวมทั้งหมด</span>
+                  <span className="text-sm font-bold text-purple-700">{simSummary.reduce((s: number, x: any) => s + x.count, 0)} ซิม</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">🔬 สรุปยอดตรวจพิเศษ</p>
+              <span className="text-sm font-bold text-blue-600">฿{loading ? '—' : specialExamTotal.toLocaleString()}</span>
+            </div>
+            {specialExamSummary.length === 0 && !loading ? (
+              <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูลในช่วงนี้</p>
+            ) : (
+              <div className="space-y-2">
+                {specialExamSummary.map((s, i) => (
+                  <div key={i} className="flex justify-between items-center bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">{s.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">×{s.count}</span>
+                    </div>
+                    <span className="text-sm font-bold text-blue-600">฿{s.amount.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
       </div>
