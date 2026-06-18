@@ -402,7 +402,7 @@ export default function Payments() {
 
       {showModal && selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100">
               <p className="text-base font-semibold text-gray-800">{selected.customers?.customer_name}</p>
               <p className="text-xs text-gray-400 mt-0.5">{selected.case_number} · {selected.booking_date}</p>
