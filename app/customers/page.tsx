@@ -19,6 +19,7 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
+  const [showInactive, setShowInactive] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -78,10 +79,25 @@ export default function Customers() {
     fetchCustomers(); setShowModal(false)
   }
 
+  // ถ้ามี booking ผูกอยู่ ห้ามลบจริง ให้ซ่อน (is_active=false) แทน เพื่อรักษาประวัติเก่าไว้
   const handleDelete = async () => {
     if (!deleteId) return
-    await supabase.from('customers').delete().eq('id', deleteId)
+    const { count } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', deleteId)
+    if (count && count > 0) {
+      await supabase.from('customers').update({ is_active: false }).eq('id', deleteId)
+      alert(`ลูกค้านี้มี ${count} รายการจองผูกอยู่ ระบบได้ซ่อนลูกค้านี้ไว้แทนการลบ เพื่อรักษาประวัติเก่า`)
+    } else {
+      await supabase.from('customers').delete().eq('id', deleteId)
+    }
     setDeleteId(null); fetchCustomers()
+  }
+
+  const handleRestore = async (id: string) => {
+    await supabase.from('customers').update({ is_active: true }).eq('id', id)
+    fetchCustomers()
   }
 
   const openDebtModal = async (c: any) => {
@@ -97,6 +113,7 @@ export default function Customers() {
   const debtGrandTotal = (debtCustomer?.opening_balance || 0) + debtBookingTotal
 
   const filtered = customers.filter(c => {
+    if (!showInactive && c.is_active === false) return false
     if (search && !c.customer_name?.includes(search) && !c.line_name?.includes(search) && !c.phone?.includes(search)) return false
     if (filterType && c.type !== filterType) return false
     return true
@@ -159,6 +176,10 @@ export default function Customers() {
               </select>
             </div>
             <div className="flex justify-between items-center flex-1">
+              <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} className="rounded border-gray-300"/>
+                แสดงลูกค้าที่ซ่อนไว้
+              </label>
               <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
               <button onClick={() => { setSearch(''); setFilterType('') }} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
             </div>
@@ -174,9 +195,12 @@ export default function Customers() {
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบข้อมูลลูกค้า</div>
           ) : (
             filtered.map((c) => (
-              <div key={c.id} className="grid grid-cols-8 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+              <div key={c.id} className={`grid grid-cols-8 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center ${c.is_active === false ? 'opacity-50' : ''}`}>
                 <span className="text-gray-400 text-xs">CUS-{String(c.customer_code).padStart(3,'0')}</span>
-                <span className="font-medium text-gray-700">{c.customer_name}</span>
+                <span className="font-medium text-gray-700 flex items-center gap-1.5">
+                  {c.customer_name}
+                  {c.is_active === false && <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">ซ่อนอยู่</span>}
+                </span>
                 <span className="text-gray-500">{c.line_name || '-'}</span>
                 <span className="text-gray-500">{c.phone || '-'}</span>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full ${c.type === 'credit' ? 'bg-amber-50 text-amber-600' : c.type === 'vip' ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -195,8 +219,14 @@ export default function Customers() {
                 </span>
                 <span className="text-gray-400 text-xs">{c.note || '-'}</span>
                 <span className="flex gap-2 justify-end">
-                  <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-500"><IconEdit size={15} /></button>
-                  <button onClick={() => setDeleteId(c.id)} className="text-gray-400 hover:text-red-500"><IconTrash size={15} /></button>
+                  {c.is_active === false ? (
+                    <button onClick={() => handleRestore(c.id)} className="text-xs text-emerald-600 hover:underline font-medium">เปิดใช้งานคืน</button>
+                  ) : (
+                    <>
+                      <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-500"><IconEdit size={15} /></button>
+                      <button onClick={() => setDeleteId(c.id)} className="text-gray-400 hover:text-red-500"><IconTrash size={15} /></button>
+                    </>
+                  )}
                 </span>
               </div>
             ))
@@ -322,7 +352,7 @@ export default function Customers() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-80 shadow-lg">
             <p className="text-base font-medium text-gray-800 mb-2">ยืนยันการลบ</p>
-            <p className="text-sm text-gray-500 mb-5">ต้องการลบลูกค้านี้ใช่ไหม?</p>
+            <p className="text-sm text-gray-500 mb-5">ต้องการลบลูกค้านี้ใช่ไหม? (ถ้ามีรายการจองผูกอยู่ ระบบจะซ่อนแทนการลบถาวร เพื่อรักษาประวัติเก่าไว้)</p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">ลบ</button>
