@@ -25,6 +25,7 @@ export default function Payments() {
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
   const [splitSource, setSplitSource] = useState({ method: 'transfer' })
+  const [slips, setSlips] = useState<any[]>([])
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
   const [search, setSearch] = useState('')
@@ -80,6 +81,11 @@ export default function Payments() {
     return Math.round((normalWithVat + specialTotal) * 100) / 100
   }
 
+  const fetchSlips = async (paymentId: string) => {
+    const { data } = await supabase.from('payment_slips').select('*').eq('payment_id', paymentId).order('created_at', { ascending: false })
+    setSlips(data || [])
+  }
+
   const handleOpenModal = (booking: any) => {
     setSelected(booking)
     const p = booking.payments?.[0]
@@ -97,6 +103,8 @@ export default function Payments() {
       use_vat: p?.use_vat || false,
       vat_mode: p?.vat_mode || 'exclusive',
     })
+    if (p?.id) fetchSlips(p.id)
+    else setSlips([])
     setShowModal(true)
   }
 
@@ -130,27 +138,51 @@ export default function Payments() {
       vat_mode: form.vat_mode,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
     }
+    let paymentId = p?.id
     if (p?.id) {
       await supabase.from('payments').update(payload).eq('id', p.id)
     } else {
-      await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }])
+      const { data: inserted } = await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }]).select().single()
+      paymentId = inserted?.id
     }
-    fetchBookings(); setShowModal(false)
+    if (paymentId) fetchSlips(paymentId)
+    fetchBookings()
   }
 
+  // อัพโหลดได้ทีละหลายไฟล์ ถ้ายังไม่มี payment ให้สร้างก่อนแบบเงียบๆ
   const handleUploadSlip = async (e: any) => {
-    const file = e.target.files[0]
-    if (!file) return
+    const files: File[] = Array.from(e.target.files || [])
+    if (files.length === 0) return
     setUploading(true)
-    const fileName = `${selected.id}_slip_${Date.now()}_${file.name}`
-    const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
-      const p = selected?.payments?.[0]
-      if (p?.id) await supabase.from('payments').update({ slip_url: urlData.publicUrl, is_verified: true }).eq('id', p.id)
-      fetchBookings()
+
+    let paymentId = selected?.payments?.[0]?.id
+    if (!paymentId) {
+      const { data: inserted } = await supabase
+        .from('payments')
+        .insert([{ booking_id: selected.id, customer_id: selected.customer_id, payment_status: 'ยังไม่ชำระ' }])
+        .select().single()
+      paymentId = inserted?.id
     }
+
+    for (const file of files) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const fileName = `${selected.id}_slip_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safeName}`
+      const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
+      if (!error && data) {
+        const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
+        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: file.name, storage_url: urlData.publicUrl }])
+      }
+    }
+    await supabase.from('payments').update({ is_verified: true }).eq('id', paymentId)
+    if (paymentId) fetchSlips(paymentId)
+    fetchBookings()
     setUploading(false)
+  }
+
+  const handleDeleteSlip = async (slipId: string) => {
+    await supabase.from('payment_slips').delete().eq('id', slipId)
+    const paymentId = selected?.payments?.[0]?.id
+    if (paymentId) fetchSlips(paymentId)
   }
 
   const openSplitModal = () => {
@@ -540,17 +572,26 @@ export default function Payments() {
                 บันทึกการชำระเงิน
               </button>
               <div className="border-t border-gray-100 pt-4">
-                <p className="text-xs font-medium text-gray-600 mb-2">แนบสลิป</p>
-                {selected.payments?.[0]?.slip_url && (
-                  <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mb-2">
-                    <IconCheck size={13} className="text-green-600"/>
-                    <a href={selected.payments[0].slip_url} target="_blank" className="text-xs text-green-700 hover:underline">ดูสลิป</a>
+                <p className="text-xs font-medium text-gray-600 mb-2">แนบสลิป ({slips.length} ไฟล์)</p>
+                {slips.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {slips.map((slip) => (
+                      <div key={slip.id} className="flex items-center justify-between gap-2 p-2 bg-green-50 rounded-lg">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <IconCheck size={13} className="text-green-600 flex-shrink-0"/>
+                          <a href={slip.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate">{slip.file_name}</a>
+                        </div>
+                        <button onClick={() => handleDeleteSlip(slip.id)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                          <IconX size={14}/>
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500 transition-colors">
                   <IconUpload size={15}/>
-                  {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์สลิป'}
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleUploadSlip} className="hidden" disabled={uploading}/>
+                  {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์สลิป (เลือกได้หลายไฟล์)'}
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={handleUploadSlip} className="hidden" disabled={uploading}/>
                 </label>
               </div>
             </div>
