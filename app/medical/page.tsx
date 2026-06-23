@@ -83,8 +83,7 @@ export default function Medical() {
     setUploading(true)
     const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบไฟล์'); setUploading(false); return }
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const fileName = `${mc.id}/${Date.now()}_${safeName}`
+    const fileName = `${mc.id}/${Date.now()}_${file.name}`
     const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
     if (!error && data) {
       const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
@@ -94,16 +93,6 @@ export default function Medical() {
     }
     setUploading(false)
   }
-  const handleDeleteCertificate = async (cert: any) => {
-  if (!confirm(`ลบไฟล์ ${cert.file_name} ใช่ไหม?`)) return
-
-  await supabase
-    .from('certificates')
-    .delete()
-    .eq('id', cert.id)
-
-  fetchCertificates(cert.case_id)
-}
 
   const getCertStatus = (booking: any) => {
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
@@ -112,6 +101,23 @@ export default function Medical() {
     const deadline = new Date(mc.cert_deadline)
     if (new Date() > deadline) return { label: 'เกิน 3 วัน!', color: 'bg-red-50 text-red-600', icon: IconAlertTriangle }
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock }
+  }
+
+  // เปลี่ยนสถานะใบแพทย์ตรงจากแถว — ถ้ายังไม่มี medical_cases เลย จะสร้างแถวใหม่ให้
+  const handleQuickCertStatus = async (b: any, newStatus: string) => {
+    const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+    if (mc?.id) {
+      await supabase.from('medical_cases').update({ cert_status: newStatus }).eq('id', mc.id)
+    } else {
+      const deadline = new Date(b.booking_date)
+      deadline.setDate(deadline.getDate() + 3)
+      await supabase.from('medical_cases').insert([{
+        booking_id: b.id, actual_count: 0, cert_count: 0,
+        exam_date: b.booking_date, cert_deadline: deadline.toISOString().slice(0,10),
+        cert_status: newStatus,
+      }])
+    }
+    fetchCases()
   }
 
   const filtered = cases.filter(b => {
@@ -277,8 +283,16 @@ export default function Medical() {
                     )}
                   </span>
                   <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
-                  <span className="flex items-center gap-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${status.color}`}><status.icon size={11} />{status.label}</span>
+                  <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={mc?.cert_status || 'รอบันทึก'}
+                      onChange={(e) => handleQuickCertStatus(b, e.target.value)}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#185FA5] ${status.color}`}
+                    >
+                      <option value="รอบันทึก">รอบันทึก</option>
+                      <option value="รอส่ง">รอส่งใบแพทย์</option>
+                      <option value="เรียบร้อย">ส่งครบแล้ว</option>
+                    </select>
                     {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
                   </span>
                   <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right">บันทึก / แนบไฟล์</button>
@@ -339,22 +353,12 @@ export default function Medical() {
             </button>
             <div className="border-t border-gray-100 pt-4">
               <p className="text-xs font-medium text-gray-700 mb-2">ใบรับรองแพทย์</p>
-             {certificates.map((cert) => (
-  <div key={cert.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mb-1.5">
-    <IconCheck size={13} className="text-green-600 flex-shrink-0" />
-
-    <a href={cert.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate flex-1">
-      {cert.file_name}
-    </a>
-
-    <button
-      onClick={() => handleDeleteCertificate(cert)}
-      className="text-xs text-red-500 hover:underline flex-shrink-0"
-    >
-      ลบ
-    </button>
-  </div>
-))}
+              {certificates.map((cert) => (
+                <div key={cert.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mb-1.5">
+                  <IconCheck size={13} className="text-green-600 flex-shrink-0" />
+                  <a href={cert.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate">{cert.file_name}</a>
+                </div>
+              ))}
               <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
                 <IconUpload size={15} />
                 {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์ใบรับรองแพทย์'}

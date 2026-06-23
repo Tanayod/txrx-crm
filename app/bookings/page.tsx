@@ -175,6 +175,23 @@ export default function Bookings() {
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-100 text-amber-600', icon: IconClock }
   }
 
+  // เปลี่ยนสถานะใบแพทย์ตรงจากแถว — ถ้ายังไม่มี medical_cases เลย จะสร้างแถวใหม่ให้
+  const handleQuickCertStatus = async (b: any, newStatus: string) => {
+    const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+    if (mc?.id) {
+      await supabase.from('medical_cases').update({ cert_status: newStatus }).eq('id', mc.id)
+    } else {
+      const deadline = new Date(b.booking_date)
+      deadline.setDate(deadline.getDate() + 3)
+      await supabase.from('medical_cases').insert([{
+        booking_id: b.id, actual_count: 0, cert_count: 0,
+        exam_date: b.booking_date, cert_deadline: deadline.toISOString().slice(0,10),
+        cert_status: newStatus,
+      }])
+    }
+    fetchBookings()
+  }
+
   const filteredCustomers = customers.filter(c =>
     c.customer_name?.includes(customerSearch) || c.line_name?.includes(customerSearch)
   )
@@ -388,9 +405,17 @@ export default function Bookings() {
                     ) : <span className="text-gray-300">-</span>}
                   </span>
                   <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${payStatus.color}`}>{payStatus.label}</span></span>
-                  <span><span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit font-medium ${medStatus.color}`}>
-                    <medStatus.icon size={10}/>{medStatus.label}
-                  </span></span>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={(Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.cert_status || 'รอบันทึก'}
+                      onChange={(e) => handleQuickCertStatus(b, e.target.value)}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#185FA5] ${medStatus.color}`}
+                    >
+                      <option value="รอบันทึก">รอบันทึก</option>
+                      <option value="รอส่ง">รอส่งใบแพทย์</option>
+                      <option value="เรียบร้อย">ส่งครบ</option>
+                    </select>
+                  </span>
                   <span className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => openEdit(b)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={15}/></button>
                     <button onClick={() => setDeleteId(b.id)} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>
