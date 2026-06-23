@@ -17,7 +17,7 @@ export default function Payments() {
   const [uploading, setUploading] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [form, setForm] = useState({
-    amount_received: 0, method: 'transfer',
+    amount_received: 0, amountTouched: false, method: 'transfer',
     payment_status: 'ชำระเงินแล้ว', invoice_no: '',
     worker_count: 0, price_per_worker: 0,
     ref_no: '', note: '',
@@ -92,7 +92,8 @@ export default function Payments() {
     const mc = getMc(booking)
     const actualCount = mc?.actual_count || booking.booked_count || 0
     setForm({
-      amount_received: p?.amount_received || 0,
+      amount_received: p?.amount_received ?? 0,
+      amountTouched: p?.id ? true : false, // ถ้าเคยบันทึกแล้ว ถือว่าค่านี้คือค่าจริงที่กรอกมา ไม่ใช่ default
       method: p?.method || 'transfer',
       payment_status: p?.payment_status || 'ยังไม่ชำระ',
       invoice_no: p?.invoice_no || '',
@@ -125,7 +126,7 @@ export default function Payments() {
   const handleSave = async () => {
     const p = selected?.payments?.[0]
     const payload = {
-      amount_received: form.amount_received || grandTotalSelected,
+      amount_received: form.amountTouched ? form.amount_received : grandTotalSelected,
       method: form.method,
       payment_status: form.payment_status,
       invoice_no: form.invoice_no,
@@ -526,10 +527,20 @@ export default function Payments() {
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ยอดรับชำระจริง (บาท)</label>
-                <input type="text" inputMode="numeric" value={form.amount_received || ''}
-                  onChange={(e) => setForm({...form, amount_received: Number(e.target.value.replace(/\D/g,''))})}
-                  placeholder={`${grandTotalSelected.toLocaleString()} (ปล่อยว่างถ้าเท่ากับยอดรวม)`}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                <div className="flex gap-2">
+                  <input type="text" inputMode="numeric"
+                    value={form.amountTouched ? (form.amount_received === 0 ? '0' : form.amount_received || '') : ''}
+                    onChange={(e) => setForm({...form, amount_received: Number(e.target.value.replace(/\D/g,'')), amountTouched: true})}
+                    placeholder={`${grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เท่ากับยอดรวม)`}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  <button type="button" onClick={() => setForm({...form, amount_received: 0, amountTouched: true})}
+                    className="px-3 py-2.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 whitespace-nowrap">
+                    ยังไม่จ่าย (0)
+                  </button>
+                </div>
+                {form.amountTouched && form.amount_received === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">⚠️ บันทึกเป็นยังไม่ได้รับชำระเลย (0 บาท) — ยอดนี้จะค้างเป็นหนี้เต็มจำนวน</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
