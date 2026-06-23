@@ -243,6 +243,7 @@ export default function Dashboard() {
     const { data: openingBalances } = await supabase.from('customers').select('opening_balance')
     const openingSum = (openingBalances || []).reduce((s: number, c: any) => s + (c.opening_balance || 0), 0)
     debtSum += openingSum
+    if (openingSum > 0) debtByType['ยอดยกมา (ก่อนใช้ระบบ)'] = openingSum
     setDebtByService(Object.entries(debtByType).sort((a: any, b: any) => b[1] - a[1]).map(([name, amount]) => ({ name, amount })))
     setTotalDebt(debtSum)
 
@@ -633,15 +634,16 @@ export default function Dashboard() {
           ) : (
             <div className="grid grid-cols-4 gap-3">
               {debtByService.map(d => {
+                const isOpening = d.name === 'ยอดยกมา (ก่อนใช้ระบบ)'
                 const colors: any = { 'ตรวจนอกสถานที่ (Mobile)': '#185FA5', 'คลินิก': '#7C3AED', 'Walk-in': '#059669', 'ไฟล์ทบิน': '#0EA5E9' }
-                const color = colors[d.name] || '#94A3B8'
+                const color = isOpening ? '#D97706' : (colors[d.name] || '#94A3B8')
                 return (
-                  <div key={d.name} className="bg-red-50 border border-red-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/customers'}>
+                  <div key={d.name} className={`rounded-xl p-3 cursor-pointer border ${isOpening ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'}`} onClick={() => window.location.href='/customers'}>
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="w-2 h-2 rounded-full" style={{ background: color }}/>
                       <p className="text-xs text-gray-600 truncate">{d.name}</p>
                     </div>
-                    <p className="text-base font-bold text-red-500">฿{d.amount.toLocaleString()}</p>
+                    <p className={`text-base font-bold ${isOpening ? 'text-amber-600' : 'text-red-500'}`}>฿{d.amount.toLocaleString()}</p>
                   </div>
                 )
               })}
