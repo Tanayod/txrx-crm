@@ -149,8 +149,20 @@ export default function Bookings() {
     setSaving(false); fetchBookings(); setShowModal(false)
   }
 
+  // ลบ booking ต้องลบข้อมูลที่ผูกอยู่ทุกตารางก่อน ไม่งั้นจะชน FK constraint (409 Conflict)
+  // รายการตารางที่ผูกกับ booking_id ทั้งหมด ณ ปัจจุบัน: medical_cases, payments, special_exams, sim_items, payment_slips (ผูกผ่าน payments)
   const handleDelete = async () => {
     if (!deleteId) return
+    // payment_slips ผูกกับ payment_id ไม่ใช่ booking_id ตรง ต้องหา payment ก่อน
+    const { data: paymentRows } = await supabase.from('payments').select('id').eq('booking_id', deleteId)
+    const paymentIds = (paymentRows || []).map((p: any) => p.id)
+    if (paymentIds.length > 0) {
+      await supabase.from('payment_slips').delete().in('payment_id', paymentIds)
+    }
+    await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
+    await supabase.from('payments').delete().eq('booking_id', deleteId)
+    await supabase.from('special_exams').delete().eq('booking_id', deleteId)
+    await supabase.from('sim_items').delete().eq('booking_id', deleteId)
     await supabase.from('bookings').delete().eq('id', deleteId)
     setDeleteId(null); fetchBookings()
   }
