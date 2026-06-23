@@ -246,14 +246,32 @@ export default function Dashboard() {
     let allSimItems: any[] = []
     let simFrom = 0
     while (true) {
-      let q = supabase.from('sim_items').select('sim_package, sim_type, sim_count, bookings(booking_date)')
+      let q = supabase.from('sim_items').select('booking_id, sim_package, sim_type, sim_count, bookings(booking_date)')
       const { data: chunk } = await q.range(simFrom, simFrom + 999)
       if (!chunk || chunk.length === 0) break
       allSimItems = [...allSimItems, ...chunk]
       if (chunk.length < 1000) break
       simFrom += 1000
     }
-    const simInRange = allSimItems.filter((s: any) => {
+    const bookingIdsWithSimItems = new Set(allSimItems.map((s: any) => s.booking_id))
+
+    // ข้อมูลเก่าก่อนระบบหลายแพ็คเกจ — มี sim_count ที่ bookings ตรงๆ แต่ไม่มีแถวใน sim_items
+    let allLegacySimBookings: any[] = []
+    let legacyFrom = 0
+    while (true) {
+      let q = supabase.from('bookings').select('id, sim_count, booking_date').gt('sim_count', 0)
+      const { data: chunk } = await q.range(legacyFrom, legacyFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allLegacySimBookings = [...allLegacySimBookings, ...chunk]
+      if (chunk.length < 1000) break
+      legacyFrom += 1000
+    }
+    const legacySimItems = allLegacySimBookings
+      .filter((b: any) => !bookingIdsWithSimItems.has(b.id))
+      .map((b: any) => ({ sim_package: 'ไม่ระบุแพ็คเกจ (ข้อมูลเก่า)', sim_type: 'ไม่ระบุ', sim_count: b.sim_count, bookings: { booking_date: b.booking_date } }))
+
+    const combinedSimItems = [...allSimItems, ...legacySimItems]
+    const simInRange = combinedSimItems.filter((s: any) => {
       const d = s.bookings?.booking_date
       if (!d) return false
       if (from && d < from) return false
@@ -629,15 +647,20 @@ export default function Dashboard() {
               <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูลในช่วงนี้</p>
             ) : (
               <div className="space-y-2">
-                {simSummary.map((s, i) => (
-                  <div key={i} className="flex justify-between items-center bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">฿{s.package}/เดือน</span>
-                      <span className="text-xs text-gray-400 ml-2">{s.type}</span>
+                {simSummary.map((s, i) => {
+                  const isLegacy = s.package === 'ไม่ระบุแพ็คเกจ (ข้อมูลเก่า)'
+                  return (
+                    <div key={i} className={`flex justify-between items-center rounded-lg px-3 py-2 border ${isLegacy ? 'bg-gray-50 border-gray-200' : 'bg-purple-50 border-purple-100'}`}>
+                      <div>
+                        <span className={`text-sm font-medium ${isLegacy ? 'text-gray-500' : 'text-gray-700'}`}>
+                          {isLegacy ? s.package : `฿${s.package}/เดือน`}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-2">{s.type}</span>
+                      </div>
+                      <span className={`text-sm font-bold ${isLegacy ? 'text-gray-500' : 'text-purple-600'}`}>{s.count} ซิม</span>
                     </div>
-                    <span className="text-sm font-bold text-purple-600">{s.count} ซิม</span>
-                  </div>
-                ))}
+                  )
+                })}
                 <div className="flex justify-between items-center pt-2 border-t border-gray-100">
                   <span className="text-xs font-semibold text-gray-600">รวมทั้งหมด</span>
                   <span className="text-sm font-bold text-purple-700">{simSummary.reduce((s: number, x: any) => s + x.count, 0)} ซิม</span>
