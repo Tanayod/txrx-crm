@@ -259,7 +259,7 @@ export default function Dashboard() {
     let allLegacySimBookings: any[] = []
     let legacyFrom = 0
     while (true) {
-      let q = supabase.from('bookings').select('id, sim_count, booking_date').gt('sim_count', 0)
+      let q = supabase.from('bookings').select('id, sim_count, sim_package, booking_date').gt('sim_count', 0)
       const { data: chunk } = await q.range(legacyFrom, legacyFrom + 999)
       if (!chunk || chunk.length === 0) break
       allLegacySimBookings = [...allLegacySimBookings, ...chunk]
@@ -268,7 +268,12 @@ export default function Dashboard() {
     }
     const legacySimItems = allLegacySimBookings
       .filter((b: any) => !bookingIdsWithSimItems.has(b.id))
-      .map((b: any) => ({ sim_package: 'ไม่ระบุแพ็คเกจ (ข้อมูลเก่า)', sim_type: 'ไม่ระบุ', sim_count: b.sim_count, bookings: { booking_date: b.booking_date } }))
+      .map((b: any) => ({
+        sim_package: b.sim_package ? b.sim_package : 'ไม่ระบุแพ็คเกจ (ข้อมูลเก่า)',
+        sim_type: 'ไม่ระบุ',
+        sim_count: b.sim_count,
+        bookings: { booking_date: b.booking_date },
+      }))
 
     const combinedSimItems = [...allSimItems, ...legacySimItems]
     const simInRange = combinedSimItems.filter((s: any) => {
