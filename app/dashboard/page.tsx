@@ -182,7 +182,7 @@ export default function Dashboard() {
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_status)')
+        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_count, cert_status)')
         .gte('booking_date', '2026-01-01')
         .lte('booking_date', todayStr)
         .range(agingFrom, agingFrom + 999)
@@ -192,17 +192,18 @@ export default function Dashboard() {
       agingFrom += 1000
     }
 
+    // สูตรเดียวกับระบบเก่า: ค้างใบแพทย์ = จำนวนตรวจจริง - จำนวนใบแพทย์ที่ส่งแล้ว (ไม่สนใจ cert_status)
     const agingList = (allYearMedical || [])
       .map(b => {
         const mc = getMc(b)
-        const isPending = mc ? mc.cert_status === 'รอส่ง' : true // ถ้ายังไม่มี medical_cases เลย ถือว่ายังไม่ส่ง (รอบันทึก) ก็ยังนับว่าค้างอยู่
-        // ใช้ actual_count ถ้ามีค่าจริง (>0) ไม่งั้น fallback เป็น booked_count เพื่อไม่ให้ booking ที่ยังไม่บันทึกจำนวนจริงหลุดจากการนับ
-        const pendingCount = mc?.actual_count > 0 ? mc.actual_count : (b.booked_count || 0)
+        const actual = mc?.actual_count || 0
+        const certSent = mc?.cert_count || 0
+        const pending = Math.max(actual - certSent, 0)
         return {
           case_number: b.case_number,
           customer_name: (b.customers as any)?.customer_name,
           booking_date: b.booking_date,
-          pending: isPending ? pendingCount : 0,
+          pending,
           daysOver: Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
         }
       })
