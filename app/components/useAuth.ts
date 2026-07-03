@@ -21,6 +21,7 @@ const PAGE_ROLES: any = {
   '/users': ['admin'],
   '/special-exams': ['admin', 'doctor', 'finance'],
   '/daily-report': ['admin', 'finance'],
+  '/finance-report': ['admin', 'finance'],
 }
 
 export function useAuth(currentPage: string) {
