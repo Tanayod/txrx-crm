@@ -27,11 +27,13 @@ export default function FinanceReport() {
 
   async function fetchReport() {
     setLoading(true)
+
+    // ดึง bookings พร้อม payments แยก payment_slips ออก
     let all: any[] = []
     let from = 0
     while (true) {
       let q = supabase.from('bookings')
-        .select('id, case_number, booking_date, booked_count, location_name, customers(customer_name, type), medical_cases(actual_count), payments(id, total_amount, amount_received, payment_status, method, invoice_no, ref_no), payment_slips(id)')
+        .select('id, case_number, booking_date, booked_count, location_name, customers(customer_name, type), medical_cases(actual_count), payments(id, total_amount, amount_received, payment_status, method, invoice_no, ref_no)')
         .order('booking_date', { ascending: false })
       if (filterDateFrom) q = q.gte('booking_date', filterDateFrom)
       if (filterDateTo) q = q.lte('booking_date', filterDateTo)
@@ -42,21 +44,40 @@ export default function FinanceReport() {
       from += 1000
     }
 
+    // ดึง payment_slips แยก เพื่อหลีกเลี่ยงปัญหา nested join
+    const paymentIds = all.flatMap((b: any) => {
+      const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
+      return p?.id ? [p.id] : []
+    })
+
+    const slipSet = new Set<string>()
+    const slipCountMap: any = {}
+    if (paymentIds.length > 0) {
+      const { data: slipsData } = await supabase
+        .from('payment_slips')
+        .select('payment_id')
+        .in('payment_id', paymentIds)
+      slipsData?.forEach((s: any) => {
+        slipSet.add(s.payment_id)
+        slipCountMap[s.payment_id] = (slipCountMap[s.payment_id] || 0) + 1
+      })
+    }
+
     // แปลงข้อมูลและคำนวณ
-    const mapped = all.map(b => {
+    const mapped = all.map((b: any) => {
       const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
       const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
-      const slips = Array.isArray(b.payment_slips) ? b.payment_slips : (b.payment_slips ? [b.payment_slips] : [])
       const total = p?.total_amount || 0
       const received = p?.amount_received || 0
-      const diff = received - total // บวก = เกิน, ลบ = ขาด
+      const diff = received - total
       const status = p?.payment_status || 'ยังไม่ชำระ'
-      const hasSlip = slips.length > 0
+      const hasSlip = p?.id ? slipSet.has(p.id) : false
+      const slipCount = p?.id ? (slipCountMap[p.id] || 0) : 0
 
       let payType = 'ยังไม่ชำระ'
       if (status === 'ชำระเงินแล้ว') {
-        if (diff > 0) payType = 'ชำระเกิน'
-        else if (diff < 0) payType = 'ชำระขาด'
+        if (diff > 0.01) payType = 'ชำระเกิน'
+        else if (diff < -0.01) payType = 'ชำระขาด'
         else payType = 'ชำระครบ'
       } else if (status === 'เครดิต') payType = 'เครดิต'
       else if (status === 'ค้างชำระ') payType = 'ค้างชำระ'
@@ -66,7 +87,6 @@ export default function FinanceReport() {
         case_number: b.case_number,
         booking_date: b.booking_date,
         customer_name: b.customers?.customer_name || '-',
-        customer_type: b.customers?.type || 'general',
         location_name: b.location_name || '-',
         actual_count: mc?.actual_count || b.booked_count || 0,
         total_amount: total,
@@ -78,13 +98,15 @@ export default function FinanceReport() {
         invoice_no: p?.invoice_no || '-',
         ref_no: p?.ref_no || '-',
         has_slip: hasSlip,
-        slip_count: slips.length,
+        slip_count: slipCount,
       }
     })
 
     setRows(mapped)
     setLoading(false)
   }
+
+  const handleSearch = () => { setLoaded(false) }
 
   const filtered = rows.filter(r => {
     if (filterCustomer && !r.customer_name.includes(filterCustomer)) return false
@@ -94,7 +116,6 @@ export default function FinanceReport() {
     return true
   })
 
-  // สรุปตัวเลข
   const summary = {
     total: filtered.length,
     totalAmount: filtered.reduce((s, r) => s + r.total_amount, 0),
@@ -124,18 +145,12 @@ export default function FinanceReport() {
 
   const exportExcel = () => {
     const exRows = filtered.map(r => ({
-      'เลขจอง': r.case_number,
-      'วันที่': r.booking_date,
-      'ลูกค้า': r.customer_name,
-      'สถานที่': r.location_name,
-      'จำนวน (คน)': r.actual_count,
-      'ยอดรวม (บาท)': r.total_amount,
-      'รับชำระจริง (บาท)': r.amount_received,
-      'ส่วนต่าง': r.diff,
-      'สถานะ': r.pay_type,
-      'วิธีชำระ': r.method,
-      'เลขใบวางบิล': r.invoice_no,
-      'เลขอ้างอิง': r.ref_no,
+      'เลขจอง': r.case_number, 'วันที่': r.booking_date,
+      'ลูกค้า': r.customer_name, 'สถานที่': r.location_name,
+      'จำนวน (คน)': r.actual_count, 'ยอดรวม (บาท)': r.total_amount,
+      'รับชำระจริง (บาท)': r.amount_received, 'ส่วนต่าง': r.diff,
+      'สถานะ': r.pay_type, 'วิธีชำระ': r.method,
+      'เลขใบวางบิล': r.invoice_no, 'เลขอ้างอิง': r.ref_no,
       'แนบสลิป': r.has_slip ? `มี (${r.slip_count} ไฟล์)` : 'ไม่มี',
     }))
     const ws = XLSX.utils.json_to_sheet(exRows)
@@ -159,45 +174,29 @@ export default function FinanceReport() {
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
               <IconDownload size={15}/> Export Excel
             </button>
-            <button onClick={fetchReport} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
+            <button onClick={handleSearch} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
               <IconRefresh size={15}/> โหลดใหม่
             </button>
           </div>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm col-span-3 grid grid-cols-6 gap-3">
-            <div className="text-center">
-              <p className="text-xs text-gray-400 mb-1">รายการทั้งหมด</p>
-              <p className="text-2xl font-bold text-gray-800">{summary.total}</p>
-              <p className="text-xs text-gray-500 mt-0.5">฿{fmt(summary.totalAmount)}</p>
-            </div>
-            <div className="text-center border-l border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">ชำระครบ</p>
-              <p className="text-2xl font-bold text-green-600">{summary.paid}</p>
-              <p className="text-xs text-green-500 mt-0.5">฿{fmt(summary.paidAmount)}</p>
-            </div>
-            <div className="text-center border-l border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">ยังไม่ชำระ/ค้าง</p>
-              <p className="text-2xl font-bold text-red-500">{summary.unpaid}</p>
-              <p className="text-xs text-red-400 mt-0.5">฿{fmt(summary.unpaidAmount)}</p>
-            </div>
-            <div className="text-center border-l border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">เครดิต (ค้าง)</p>
-              <p className="text-2xl font-bold text-amber-500">{summary.credit}</p>
-              <p className="text-xs text-amber-400 mt-0.5">฿{fmt(summary.creditAmount)}</p>
-            </div>
-            <div className="text-center border-l border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">ชำระเกิน</p>
-              <p className="text-2xl font-bold text-blue-500">{summary.over}</p>
-              <p className="text-xs text-blue-400 mt-0.5">+฿{fmt(summary.overAmount)}</p>
-            </div>
-            <div className="text-center border-l border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">ชำระขาด</p>
-              <p className="text-2xl font-bold text-orange-500">{summary.under}</p>
-              <p className="text-xs text-orange-400 mt-0.5">-฿{fmt(summary.underAmount)}</p>
-            </div>
+        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm mb-4">
+          <div className="grid grid-cols-6 gap-3">
+            {[
+              { label: 'รายการทั้งหมด', value: summary.total, amount: summary.totalAmount, color: 'text-gray-800' },
+              { label: 'ชำระครบ', value: summary.paid, amount: summary.paidAmount, color: 'text-green-600' },
+              { label: 'ยังไม่ชำระ/ค้าง', value: summary.unpaid, amount: summary.unpaidAmount, color: 'text-red-500' },
+              { label: 'เครดิต (ค้าง)', value: summary.credit, amount: summary.creditAmount, color: 'text-amber-500' },
+              { label: 'ชำระเกิน', value: summary.over, amount: summary.overAmount, color: 'text-blue-500', prefix: '+' },
+              { label: 'ชำระขาด', value: summary.under, amount: summary.underAmount, color: 'text-orange-500', prefix: '-' },
+            ].map((s, i) => (
+              <div key={i} className={`text-center ${i > 0 ? 'border-l border-gray-100' : ''}`}>
+                <p className="text-xs text-gray-400 mb-1">{s.label}</p>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className={`text-xs mt-0.5 ${s.color}`}>{s.prefix || ''}฿{fmt(s.amount)}</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -259,7 +258,7 @@ export default function FinanceReport() {
             </div>
           </div>
           <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
-            <p className="text-xs text-gray-400">แสดง {filtered.length} จาก {rows.length} รายการ</p>
+            <p className="text-xs text-gray-400">{loading ? 'กำลังโหลด...' : `แสดง ${filtered.length} จาก ${rows.length} รายการ`}</p>
             <button onClick={() => { setFilterCustomer(''); setFilterStatus(''); setFilterSlip('') }}
               className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
@@ -269,7 +268,7 @@ export default function FinanceReport() {
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
           <div className="grid grid-cols-10 gap-2 px-4 py-2.5 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span className="col-span-2">เลขจอง / วันที่</span>
-            <span className="col-span-2">ลูกค้า</span>
+            <span className="col-span-2">ลูกค้า / สถานที่</span>
             <span>จำนวน</span>
             <span>ยอดรวม</span>
             <span>รับจริง</span>
@@ -280,9 +279,9 @@ export default function FinanceReport() {
           {loading ? (
             <div className="p-8 text-center text-sm text-gray-400">กำลังโหลด...</div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
+            <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ — ลองกดปุ่ม "โหลดใหม่"</div>
           ) : filtered.map((r, i) => (
-            <div key={r.id} className={`grid grid-cols-10 gap-2 px-4 py-3 border-b border-gray-50 text-xs hover:bg-gray-50 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+            <div key={r.id} className={`grid grid-cols-10 gap-2 px-4 py-3 border-b border-gray-50 text-xs hover:bg-blue-50/20 items-center ${i % 2 !== 0 ? 'bg-gray-50/30' : ''}`}>
               <div className="col-span-2">
                 <p className="font-mono text-gray-500">{r.case_number}</p>
                 <p className="text-gray-400">{r.booking_date}</p>
@@ -294,28 +293,22 @@ export default function FinanceReport() {
               <span className="text-gray-600">{r.actual_count} คน</span>
               <span className="font-medium text-gray-700">{r.total_amount > 0 ? `฿${fmt(r.total_amount)}` : '-'}</span>
               <span className={r.amount_received > 0 ? 'font-medium text-green-600' : 'text-gray-300'}>{r.amount_received > 0 ? `฿${fmt(r.amount_received)}` : '-'}</span>
-              <span className={r.diff > 0 ? 'text-blue-600 font-medium' : r.diff < 0 ? 'text-orange-500 font-medium' : 'text-gray-300'}>
-                {r.diff !== 0 ? `${r.diff > 0 ? '+' : ''}฿${fmt(r.diff)}` : '-'}
+              <span className={r.diff > 0.01 ? 'text-blue-600 font-medium' : r.diff < -0.01 ? 'text-orange-500 font-medium' : 'text-gray-300'}>
+                {Math.abs(r.diff) > 0.01 ? `${r.diff > 0 ? '+' : ''}฿${fmt(r.diff)}` : '-'}
               </span>
               <span><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payTypeColor[r.pay_type] || 'bg-gray-100 text-gray-500'}`}>{r.pay_type}</span></span>
-              <span>
-                {r.has_slip
-                  ? <span className="text-green-600 font-medium">📎 {r.slip_count} ไฟล์</span>
-                  : <span className="text-gray-300">ไม่มี</span>
-                }
-              </span>
+              <span>{r.has_slip ? <span className="text-green-600 font-medium">📎 {r.slip_count}</span> : <span className="text-gray-300">ไม่มี</span>}</span>
             </div>
           ))}
-          {/* Footer รวม */}
           {filtered.length > 0 && (
-            <div className="grid grid-cols-10 gap-2 px-4 py-3 bg-gray-800 text-xs font-bold text-white">
+            <div className="grid grid-cols-10 gap-2 px-4 py-3 bg-gray-800 text-xs font-bold text-white rounded-b-xl">
               <div className="col-span-2">รวม {filtered.length} รายการ</div>
               <div className="col-span-2"></div>
               <span></span>
               <span>฿{fmt(summary.totalAmount)}</span>
               <span className="text-green-400">฿{fmt(summary.totalReceived)}</span>
-              <span className={summary.totalReceived - summary.totalAmount > 0 ? 'text-blue-400' : summary.totalReceived - summary.totalAmount < 0 ? 'text-orange-400' : 'text-gray-400'}>
-                {summary.totalReceived - summary.totalAmount !== 0 ? `${summary.totalReceived - summary.totalAmount > 0 ? '+' : ''}฿${fmt(summary.totalReceived - summary.totalAmount)}` : '-'}
+              <span className={(summary.totalReceived - summary.totalAmount) > 0.01 ? 'text-blue-400' : (summary.totalReceived - summary.totalAmount) < -0.01 ? 'text-orange-400' : 'text-gray-400'}>
+                {Math.abs(summary.totalReceived - summary.totalAmount) > 0.01 ? `${(summary.totalReceived - summary.totalAmount) > 0 ? '+' : ''}฿${fmt(summary.totalReceived - summary.totalAmount)}` : '-'}
               </span>
               <span></span>
               <span className="text-green-400">{summary.hasSlip}/{filtered.length}</span>
