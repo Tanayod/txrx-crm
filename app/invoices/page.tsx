@@ -107,9 +107,9 @@ export default function Invoices() {
     fetchBookings(df, '')
   }
 
-  // คำนวณ invoice
-  const mc = getMc(selected)
-  const p = getP(selected)
+  // คำนวณ invoice — guard null เพราะ selected อาจเป็น null ตอน prerender
+  const mc = selected ? getMc(selected) : null
+  const p = selected ? getP(selected) : null
   const actualCount = mc?.actual_count || selected?.booked_count || 0
   const rawTotal = actualCount * pricePerHead
   const subtotal = useVat && vatMode === 'inclusive' ? Math.round((rawTotal / 1.07) * 100) / 100 : rawTotal
