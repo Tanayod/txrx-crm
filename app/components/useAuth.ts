@@ -20,7 +20,7 @@ const PAGE_ROLES: any = {
   '/notifications': ['admin', 'finance'],
   '/users': ['admin'],
   '/special-exams': ['admin', 'doctor', 'finance'],
-  '/daily-report': ['admin', 'finance'],
+  '/daily-report': ['admin', 'finance', 'doctor'], // เพิ่ม doctor ให้เข้ารายงานรายวันได้
   '/finance-report': ['admin', 'finance'],
 }
 
