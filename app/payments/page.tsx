@@ -6,12 +6,18 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconUpload, IconCheck, IconSearch, IconDownload, IconPlus, IconX, IconMicroscope } from '@tabler/icons-react'
+import { IconUpload, IconCheck, IconSearch, IconDownload, IconPlus, IconX, IconMicroscope, IconSettings, IconReceipt } from '@tabler/icons-react'
+import ReceiptModal from '../components/ReceiptModal'
+import CompanySettingsModal from '../components/CompanySettingsModal'
 
 export default function Payments() {
   const { user, role, ready, logout } = useAuth('/payments')
   const [bookings, setBookings] = useState<any[]>([])
   const [bankAccounts, setBankAccounts] = useState<any[]>([])
+  const [companySettings, setCompanySettings] = useState<any>(null)
+  const [showCompanySettings, setShowCompanySettings] = useState(false)
+  const [receiptsForBooking, setReceiptsForBooking] = useState<any[]>([])
+  const [receiptModal, setReceiptModal] = useState<{ mode: 'create' | 'view', receipt?: any } | null>(null)
   const [selected, setSelected] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
@@ -41,7 +47,17 @@ export default function Payments() {
   const [filterActualMax, setFilterActualMax] = useState('')
   const [filterHasActual, setFilterHasActual] = useState('')
 
-  if (ready && !loaded) { fetchBookings(); fetchBankAccounts(); setLoaded(true) }
+  if (ready && !loaded) { fetchBookings(); fetchBankAccounts(); fetchCompanySettings(); setLoaded(true) }
+
+  async function fetchCompanySettings() {
+    const { data } = await supabase.from('company_settings').select('*').limit(1).single()
+    setCompanySettings(data || null)
+  }
+
+  async function fetchReceiptsForBooking(bookingId: string) {
+    const { data } = await supabase.from('receipts').select('*').eq('booking_id', bookingId).order('created_at', { ascending: false })
+    setReceiptsForBooking(data || [])
+  }
 
   async function fetchBankAccounts() {
     const { data } = await supabase.from('bank_accounts').select('*').eq('is_active', true).order('sort_order', { ascending: true })
@@ -118,6 +134,7 @@ export default function Payments() {
     })
     if (p?.id) fetchSlips(p.id)
     else setSlips([])
+    fetchReceiptsForBooking(booking.id)
     setShowModal(true)
   }
 
@@ -362,6 +379,9 @@ export default function Payments() {
             <p className="text-xs text-gray-400 mt-0.5">สถานะการชำระเงินทั้งหมด</p>
           </div>
           <div className="flex gap-2">
+            <button onClick={() => setShowCompanySettings(true)} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
+              <IconSettings size={15}/> ตั้งค่าบริษัท
+            </button>
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
               <IconDownload size={15}/> Export
             </button>
@@ -743,6 +763,33 @@ export default function Payments() {
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={handleUploadSlip} className="hidden" disabled={uploading}/>
                 </label>
               </div>
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-xs font-medium text-gray-600">ใบเสร็จรับเงิน ({receiptsForBooking.length} ใบ)</p>
+                  <button
+                    onClick={() => setReceiptModal({ mode: 'create' })}
+                    disabled={!selected?.payments?.[0]?.id}
+                    title={!selected?.payments?.[0]?.id ? 'กรุณาบันทึกการชำระเงินก่อน' : ''}
+                    className="flex items-center gap-1 text-xs bg-[#185FA5] text-white px-3 py-1.5 rounded-lg hover:bg-[#0C447C] disabled:opacity-40 disabled:cursor-not-allowed">
+                    <IconReceipt size={13}/> ออกใบเสร็จ
+                  </button>
+                </div>
+                {receiptsForBooking.length > 0 && (
+                  <div className="space-y-1.5">
+                    {receiptsForBooking.map((rc) => (
+                      <div key={rc.id} className={`flex items-center justify-between gap-2 p-2 rounded-lg ${rc.is_cancelled ? 'bg-red-50' : 'bg-blue-50'}`}>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-medium truncate ${rc.is_cancelled ? 'text-red-500 line-through' : 'text-blue-700'}`}>{rc.receipt_no}</p>
+                          <p className="text-xs text-gray-400">{rc.issue_date} · ฿{rc.total_amount?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
+                        </div>
+                        <button onClick={() => setReceiptModal({ mode: 'view', receipt: rc })} className="text-xs text-[#185FA5] hover:underline flex-shrink-0">
+                          {rc.is_cancelled ? 'ดู' : 'พิมพ์ซ้ำ'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="p-4 border-t border-gray-100 flex justify-end">
               <button onClick={() => setShowModal(false)} className="px-5 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
@@ -840,6 +887,26 @@ export default function Payments() {
             </div>
           </div>
         </div>
+      )}
+      {showCompanySettings && (
+        <CompanySettingsModal
+          settings={companySettings}
+          onClose={() => setShowCompanySettings(false)}
+          onSaved={(s) => setCompanySettings(s)}
+        />
+      )}
+
+      {receiptModal && (
+        <ReceiptModal
+          mode={receiptModal.mode}
+          booking={selected}
+          payment={selected?.payments?.[0]}
+          companySettings={companySettings}
+          existingReceipt={receiptModal.receipt}
+          onClose={() => setReceiptModal(null)}
+          onIssued={() => { if (selected?.id) fetchReceiptsForBooking(selected.id) }}
+          onCancelled={() => { if (selected?.id) fetchReceiptsForBooking(selected.id) }}
+        />
       )}
     </div>
   )
