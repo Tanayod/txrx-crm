@@ -37,7 +37,7 @@ export default function Sidebar({ user, role, currentPath, onLogout }: {
           <div className="w-8 h-8 bg-[#185FA5] rounded-lg flex items-center justify-center text-white font-bold text-sm">TX</div>
           <div>
             <p className="text-sm font-semibold text-gray-800">Txrx Service</p>
-            <p className="text-xs text-gray-400">ระบบจัดการสุขภาพ</p>
+            <p className="text-xs text-gray-400">ระบบจองตรวจสุขภาพแรงงาน</p>
           </div>
         </div>
       </div>
