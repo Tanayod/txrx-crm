@@ -10,7 +10,7 @@ const ROLE_HOME: any = {
   doctor: '/medical',
 }
 
-const PAGE_ROLES: any = {
+export const PAGE_ROLES: any = {
   '/dashboard': ['admin', 'finance'],
   '/bookings': ['admin'],
   '/customers': ['admin'],

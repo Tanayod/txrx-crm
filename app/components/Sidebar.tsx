@@ -7,6 +7,7 @@ import {
   IconMicroscope, IconCash, IconFileInvoice, IconFileReport,
   IconBell, IconSettings, IconLogout, IconChartBar
 } from '@tabler/icons-react'
+import { PAGE_ROLES } from './useAuth'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: IconLayoutDashboard },
@@ -25,6 +26,9 @@ const navItems = [
 export default function Sidebar({ user, role, currentPath, onLogout }: {
   user: any, role: string, currentPath: string, onLogout: () => void
 }) {
+  // แสดงเฉพาะเมนูที่ role ปัจจุบันมีสิทธิ์เข้าถึง (ใช้กติกาเดียวกับ useAuth ที่ป้องกันการเข้าหน้าตรงๆ)
+  const visibleItems = navItems.filter(item => (PAGE_ROLES[item.href] || []).includes(role))
+
   return (
     <div className="fixed left-0 top-0 h-full w-56 bg-white border-r border-gray-100 flex flex-col z-40 shadow-sm">
       {/* Logo */}
@@ -40,7 +44,7 @@ export default function Sidebar({ user, role, currentPath, onLogout }: {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-3 overflow-y-auto">
-        {navItems.map(item => {
+        {visibleItems.map(item => {
           const isActive = currentPath === item.href
           return (
             <Link key={item.href} href={item.href}
