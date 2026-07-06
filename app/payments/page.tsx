@@ -11,6 +11,7 @@ import { IconUpload, IconCheck, IconSearch, IconDownload, IconPlus, IconX, IconM
 export default function Payments() {
   const { user, role, ready, logout } = useAuth('/payments')
   const [bookings, setBookings] = useState<any[]>([])
+  const [bankAccounts, setBankAccounts] = useState<any[]>([])
   const [selected, setSelected] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
@@ -20,11 +21,11 @@ export default function Payments() {
     amount_received: 0, amountTouched: false, method: 'transfer',
     payment_status: 'ชำระเงินแล้ว', invoice_no: '',
     worker_count: 0, price_per_worker: 0,
-    ref_no: '', note: '',
+    ref_no: '', note: '', bank_account_id: '',
     use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
-  const [splitSource, setSplitSource] = useState({ method: 'transfer' })
+  const [splitSource, setSplitSource] = useState({ method: 'transfer', bank_account_id: '' })
   const [slips, setSlips] = useState<any[]>([])
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
@@ -39,7 +40,14 @@ export default function Payments() {
   const [filterActualMax, setFilterActualMax] = useState('')
   const [filterHasActual, setFilterHasActual] = useState('')
 
-  if (ready && !loaded) { fetchBookings(); setLoaded(true) }
+  if (ready && !loaded) { fetchBookings(); fetchBankAccounts(); setLoaded(true) }
+
+  async function fetchBankAccounts() {
+    const { data } = await supabase.from('bank_accounts').select('*').eq('is_active', true).order('sort_order', { ascending: true })
+    setBankAccounts(data || [])
+  }
+
+  const getBankAccountLabel = (acc: any) => acc.account_name ? `${acc.bank_name} - ${acc.account_name}` : acc.bank_name
 
   async function fetchBookings(dateFrom?: string, dateTo?: string) {
     let all: any[] = []
@@ -48,7 +56,7 @@ export default function Payments() {
     const dt = dateTo ?? filterDateTo
     while (true) {
       let q = supabase.from('bookings')
-        .select('*, customers(customer_name, type, credit_limit, credit_balance), payments(*), medical_cases(actual_count), special_exams(total_amount)')
+        .select('*, customers(customer_name, type, credit_limit, credit_balance), payments(*, bank_accounts(bank_name, account_name)), medical_cases(actual_count), special_exams(total_amount)')
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
@@ -101,6 +109,7 @@ export default function Payments() {
       price_per_worker: p?.price_per_worker || 0,
       ref_no: p?.ref_no || '',
       note: p?.note || '',
+      bank_account_id: p?.bank_account_id || '',
       use_vat: p?.use_vat || false,
       vat_mode: p?.vat_mode || 'exclusive',
     })
@@ -135,6 +144,7 @@ export default function Payments() {
       total_amount: grandTotalSelected,
       ref_no: form.ref_no,
       note: form.note,
+      bank_account_id: form.method === 'transfer' ? (form.bank_account_id || null) : null,
       use_vat: form.use_vat,
       vat_mode: form.vat_mode,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
@@ -200,6 +210,7 @@ export default function Payments() {
       amount: 0,
       selected: false,
     })))
+    setSplitSource({ method: 'transfer', bank_account_id: '' })
     setShowSplitModal(true)
   }
 
@@ -213,6 +224,7 @@ export default function Payments() {
         customer_id: booking?.customer_id,
         amount_received: item.amount,
         method: splitSource.method,
+        bank_account_id: splitSource.method === 'transfer' ? (splitSource.bank_account_id || null) : null,
         payment_status: 'ชำระเงินแล้ว',
         paid_at: new Date().toISOString(),
       }
@@ -274,6 +286,7 @@ export default function Payments() {
         'ยอดรวม': grandTotal,
         'ยอดรับ': p?.amount_received || 0,
         'วิธีชำระ': p?.method || '',
+        'บัญชีธนาคาร': p?.bank_accounts ? getBankAccountLabel(p.bank_accounts) : '',
         'สถานะ': getPaymentStatus(b).label,
       }
     })
@@ -437,6 +450,9 @@ export default function Payments() {
                   {p?.amount_received > 0 ? (
                     <p className="text-xs font-semibold text-emerald-600">฿{p.amount_received.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                   ) : <span className="text-xs text-gray-300">-</span>}
+                  {p?.method === 'transfer' && p?.bank_accounts && (
+                    <p className="text-xs text-gray-400 mt-0.5">{getBankAccountLabel(p.bank_accounts)}</p>
+                  )}
                 </div>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
                 <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก</button>
@@ -545,7 +561,8 @@ export default function Payments() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วิธีชำระ</label>
-                  <select value={form.method} onChange={(e) => setForm({...form, method: e.target.value})}
+                  <select value={form.method}
+                    onChange={(e) => setForm({...form, method: e.target.value, bank_account_id: e.target.value === 'transfer' ? form.bank_account_id : ''})}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                     <option value="transfer">โอนเงิน</option>
                     <option value="cash">เงินสด</option>
@@ -561,6 +578,18 @@ export default function Payments() {
                   </select>
                 </div>
               </div>
+              {form.method === 'transfer' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">บัญชีที่รับโอน</label>
+                  <select value={form.bank_account_id} onChange={(e) => setForm({...form, bank_account_id: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">เลือกบัญชี...</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>{getBankAccountLabel(acc)} ({acc.account_number})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่ใบวางบิล</label>
                 <input value={form.invoice_no} onChange={(e) => setForm({...form, invoice_no: e.target.value})}
@@ -626,7 +655,8 @@ export default function Payments() {
             <div className="p-4 border-b border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">วิธีชำระ</label>
-                <select value={splitSource.method} onChange={(e) => setSplitSource({...splitSource, method: e.target.value})}
+                <select value={splitSource.method}
+                  onChange={(e) => setSplitSource({...splitSource, method: e.target.value, bank_account_id: e.target.value === 'transfer' ? splitSource.bank_account_id : ''})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                   <option value="transfer">โอนเงิน</option>
                   <option value="cash">เงินสด</option>
@@ -639,6 +669,18 @@ export default function Payments() {
                   <p className="text-xl font-bold text-[#185FA5]">฿{splitTotal.toLocaleString()}</p>
                 </div>
               </div>
+              {splitSource.method === 'transfer' && (
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 mb-1 block">บัญชีที่รับโอน</label>
+                  <select value={splitSource.bank_account_id} onChange={(e) => setSplitSource({...splitSource, bank_account_id: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">เลือกบัญชี...</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>{getBankAccountLabel(acc)} ({acc.account_number})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <div className="grid grid-cols-6 gap-2 px-3 py-2 bg-gray-50 rounded-lg text-xs font-semibold text-gray-500 mb-2">
