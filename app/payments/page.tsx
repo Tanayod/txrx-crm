@@ -23,6 +23,7 @@ export default function Payments() {
     worker_count: 0, price_per_worker: 0,
     ref_no: '', note: '', bank_account_id: '',
     use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
+    credit_used: 0, keep_excess_credit: true,
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
   const [splitSource, setSplitSource] = useState({ method: 'transfer', bank_account_id: '' })
@@ -56,7 +57,7 @@ export default function Payments() {
     const dt = dateTo ?? filterDateTo
     while (true) {
       let q = supabase.from('bookings')
-        .select('*, customers(customer_name, type, credit_limit, credit_balance), payments(*, bank_accounts(bank_name, account_name)), medical_cases(actual_count), special_exams(total_amount)')
+        .select('*, customers(customer_name, type, credit_limit, credit_balance, overpayment_balance), payments(*, bank_accounts(bank_name, account_name)), medical_cases(actual_count), special_exams(total_amount)')
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
@@ -112,6 +113,8 @@ export default function Payments() {
       bank_account_id: p?.bank_account_id || '',
       use_vat: p?.use_vat || false,
       vat_mode: p?.vat_mode || 'exclusive',
+      credit_used: p?.credit_used || 0,
+      keep_excess_credit: true,
     })
     if (p?.id) fetchSlips(p.id)
     else setSlips([])
@@ -132,10 +135,23 @@ export default function Payments() {
     : normalTotal
   const grandTotalSelected = normalTotalWithVat + specialAmountSelected
 
+  // ===== ยอดเครดิตสะสม (จากการโอนเกินครั้งก่อน) =====
+  const selectedPayment = selected?.payments?.[0]
+  const prevCreditUsed = selectedPayment?.credit_used || 0
+  const prevCreditDeposited = selectedPayment?.credit_deposited || 0
+  const creditAvailableRaw = selected?.customers?.overpayment_balance || 0
+  // ยอดสูงสุดที่หักได้ = เครดิตที่เหลือ + เครดิตที่ payment นี้เคยหักไปแล้ว (เผื่อแก้ไขซ้ำ) แต่ไม่เกินยอดที่ต้องจ่าย
+  const maxUsableCredit = Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
+  const creditUsed = Math.min(form.credit_used || 0, maxUsableCredit)
+  const netDue = Math.max(Math.round((grandTotalSelected - creditUsed) * 100) / 100, 0)
+  const actualReceived = form.amountTouched ? form.amount_received : netDue
+  const excess = form.amountTouched ? Math.max(Math.round((actualReceived - netDue) * 100) / 100, 0) : 0
+  const creditDeposited = (excess > 0 && form.keep_excess_credit) ? excess : 0
+
   const handleSave = async () => {
     const p = selected?.payments?.[0]
     const payload = {
-      amount_received: form.amountTouched ? form.amount_received : grandTotalSelected,
+      amount_received: actualReceived,
       method: form.method,
       payment_status: form.payment_status,
       invoice_no: form.invoice_no,
@@ -147,6 +163,8 @@ export default function Payments() {
       bank_account_id: form.method === 'transfer' ? (form.bank_account_id || null) : null,
       use_vat: form.use_vat,
       vat_mode: form.vat_mode,
+      credit_used: creditUsed,
+      credit_deposited: creditDeposited,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
     }
     let paymentId = p?.id
@@ -156,6 +174,31 @@ export default function Payments() {
       const { data: inserted } = await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }]).select().single()
       paymentId = inserted?.id
     }
+
+    // ปรับยอดเครดิตสะสมของลูกค้า เฉพาะส่วนต่างจากค่าที่เคยบันทึกไว้ก่อนหน้า (กันนับซ้ำเวลาแก้ไขรายการเดิม)
+    const creditUsedDelta = Math.round((creditUsed - prevCreditUsed) * 100) / 100
+    const creditDepositedDelta = Math.round((creditDeposited - prevCreditDeposited) * 100) / 100
+    const balanceDelta = Math.round((creditDepositedDelta - creditUsedDelta) * 100) / 100
+    if (balanceDelta !== 0 && selected.customer_id) {
+      await supabase.rpc('adjust_customer_credit', { p_customer_id: selected.customer_id, p_delta: balanceDelta })
+    }
+    if (creditUsedDelta !== 0 && paymentId) {
+      await supabase.from('customer_credit_ledger').insert([{
+        customer_id: selected.customer_id, booking_id: selected.id, payment_id: paymentId,
+        type: creditUsedDelta > 0 ? 'use' : 'deposit',
+        amount: Math.abs(creditUsedDelta),
+        note: creditUsedDelta > 0 ? 'นำเครดิตไปหักยอดจองนี้' : 'ยกเลิก/ลดยอดที่เคยหักเครดิตไว้กับจองนี้',
+      }])
+    }
+    if (creditDepositedDelta !== 0 && paymentId) {
+      await supabase.from('customer_credit_ledger').insert([{
+        customer_id: selected.customer_id, booking_id: selected.id, payment_id: paymentId,
+        type: creditDepositedDelta > 0 ? 'deposit' : 'use',
+        amount: Math.abs(creditDepositedDelta),
+        note: creditDepositedDelta > 0 ? 'รับชำระเกินจากจองนี้ เก็บไว้เป็นเครดิต' : 'ยกเลิก/ลดยอดเครดิตที่เคยเก็บไว้จากจองนี้',
+      }])
+    }
+
     if (paymentId) fetchSlips(paymentId)
     fetchBookings()
   }
@@ -287,6 +330,9 @@ export default function Payments() {
         'ยอดรับ': p?.amount_received || 0,
         'วิธีชำระ': p?.method || '',
         'บัญชีธนาคาร': p?.bank_accounts ? getBankAccountLabel(p.bank_accounts) : '',
+        'เครดิตที่ใช้หัก': p?.credit_used || 0,
+        'เครดิตที่เก็บไว้(เกินมา)': p?.credit_deposited || 0,
+        'เครดิตคงเหลือลูกค้า': b.customers?.overpayment_balance || 0,
         'สถานะ': getPaymentStatus(b).label,
       }
     })
@@ -432,6 +478,11 @@ export default function Payments() {
                 <div>
                   <p className="font-medium text-gray-800 text-xs">{b.customers?.customer_name}</p>
                   {b.customers?.type === 'credit' && <p className="text-xs text-amber-500">เครดิต</p>}
+                  {b.customers?.overpayment_balance > 0 && (
+                    <span className="text-xs bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-md font-medium inline-block mt-0.5">
+                      มีเครดิต ฿{b.customers.overpayment_balance.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
+                    </span>
+                  )}
                 </div>
                 <span className="text-gray-500 text-xs">{b.booking_date}</span>
                 <span className="text-gray-700 text-xs">{workerCount > 0 ? `${workerCount} คน` : '-'}</span>
@@ -452,6 +503,12 @@ export default function Payments() {
                   ) : <span className="text-xs text-gray-300">-</span>}
                   {p?.method === 'transfer' && p?.bank_accounts && (
                     <p className="text-xs text-gray-400 mt-0.5">{getBankAccountLabel(p.bank_accounts)}</p>
+                  )}
+                  {p?.credit_used > 0 && (
+                    <p className="text-xs text-emerald-500 mt-0.5">ใช้เครดิต ฿{p.credit_used.toLocaleString()}</p>
+                  )}
+                  {p?.credit_deposited > 0 && (
+                    <p className="text-xs text-sky-500 mt-0.5">เก็บเป็นเครดิต ฿{p.credit_deposited.toLocaleString()}</p>
                   )}
                 </div>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
@@ -474,6 +531,30 @@ export default function Payments() {
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                   <p className="text-xs text-amber-700 font-semibold">ลูกค้าเครดิต</p>
                   <p className="text-xs text-amber-600 mt-0.5">วงเงิน: ฿{selected.customers.credit_limit?.toLocaleString()} | ค้างอยู่: ฿{selected.customers.credit_balance?.toLocaleString()}</p>
+                </div>
+              )}
+              {creditAvailableRaw > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-emerald-700">💚 ลูกค้ามียอดเครดิตค้างอยู่ (จากการโอนเกินครั้งก่อน)</p>
+                  <p className="text-lg font-bold text-emerald-700 mt-0.5">฿{creditAvailableRaw.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2.5">
+                    <input type="checkbox" checked={(form.credit_used || 0) > 0}
+                      onChange={(e) => setForm({...form, credit_used: e.target.checked ? Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected)) : 0})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs font-medium text-gray-700">ใช้เครดิตนี้หักยอดจองนี้</span>
+                  </label>
+                  {(form.credit_used || 0) > 0 && (
+                    <div className="mt-2">
+                      <label className="text-xs text-gray-600 mb-1 block">จำนวนเงินที่จะหัก (บาท)</label>
+                      <input type="text" inputMode="numeric" value={form.credit_used || ''}
+                        onChange={(e) => {
+                          const v = Number(e.target.value.replace(/\D/g,''))
+                          setForm({...form, credit_used: Math.max(0, Math.min(v, maxUsableCredit))})
+                        }}
+                        className="w-full border border-emerald-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
+                      <p className="text-xs text-gray-400 mt-1">หักได้สูงสุด ฿{maxUsableCredit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
@@ -539,6 +620,18 @@ export default function Payments() {
                     <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งหมด</span>
                     <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
+                  {creditUsed > 0 && (
+                    <>
+                      <div className="flex justify-between text-xs text-emerald-600">
+                        <span>หักเครดิตสะสม</span>
+                        <span className="font-medium">- ฿{creditUsed.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                        <span className="text-sm font-semibold text-gray-700">ยอดที่ต้องชำระจริง</span>
+                        <span className="text-lg font-bold text-emerald-600">฿{netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
               <div>
@@ -547,7 +640,7 @@ export default function Payments() {
                   <input type="text" inputMode="numeric"
                     value={form.amountTouched ? (form.amount_received === 0 ? '0' : form.amount_received || '') : ''}
                     onChange={(e) => setForm({...form, amount_received: Number(e.target.value.replace(/\D/g,'')), amountTouched: true})}
-                    placeholder={`${grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เท่ากับยอดรวม)`}
+                    placeholder={`${netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เท่ากับยอดที่ต้องชำระ)`}
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
                   <button type="button" onClick={() => setForm({...form, amount_received: 0, amountTouched: true})}
                     className="px-3 py-2.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 whitespace-nowrap">
@@ -558,6 +651,22 @@ export default function Payments() {
                   <p className="text-xs text-amber-600 mt-1">⚠️ บันทึกเป็นยังไม่ได้รับชำระเลย (0 บาท) — ยอดนี้จะค้างเป็นหนี้เต็มจำนวน</p>
                 )}
               </div>
+              {excess > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-amber-700">
+                    ตรวจพบว่ารับชำระเกินยอดที่ต้องจ่าย ฿{excess.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input type="checkbox" checked={form.keep_excess_credit}
+                      onChange={(e) => setForm({...form, keep_excess_credit: e.target.checked})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs text-gray-700">เก็บส่วนเกินนี้ไว้เป็นเครดิตให้ลูกค้า (นำไปหักยอดจองครั้งหน้าได้)</span>
+                  </label>
+                  {!form.keep_excess_credit && (
+                    <p className="text-xs text-gray-400 mt-1">ถ้าไม่ติ๊ก ระบบจะไม่บันทึกส่วนเกินนี้เป็นเครดิต</p>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วิธีชำระ</label>
