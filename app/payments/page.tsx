@@ -29,7 +29,7 @@ export default function Payments() {
     worker_count: 0, price_per_worker: 0,
     ref_no: '', note: '', bank_account_id: '',
     use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
-    credit_used: 0, keep_excess_credit: true,
+    credit_used: 0, credit_toggle: false, keep_excess_credit: true,
   })
   const [splitPayments, setSplitPayments] = useState<any[]>([])
   const [splitSource, setSplitSource] = useState({ method: 'transfer', bank_account_id: '' })
@@ -130,6 +130,7 @@ export default function Payments() {
       use_vat: p?.use_vat || false,
       vat_mode: p?.vat_mode || 'exclusive',
       credit_used: p?.credit_used || 0,
+      credit_toggle: (p?.credit_used || 0) > 0,
       keep_excess_credit: true,
     })
     if (p?.id) fetchSlips(p.id)
@@ -159,7 +160,7 @@ export default function Payments() {
   const creditAvailableRaw = selected?.customers?.overpayment_balance || 0
   // ยอดสูงสุดที่หักได้ = เครดิตที่เหลือ + เครดิตที่ payment นี้เคยหักไปแล้ว (เผื่อแก้ไขซ้ำ) แต่ไม่เกินยอดที่ต้องจ่าย
   const maxUsableCredit = Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
-  const creditUsed = Math.min(form.credit_used || 0, maxUsableCredit)
+  const creditUsed = form.credit_toggle ? Math.min(form.credit_used || 0, maxUsableCredit) : 0
   const netDue = Math.max(Math.round((grandTotalSelected - creditUsed) * 100) / 100, 0)
   const actualReceived = form.amountTouched ? form.amount_received : netDue
   const excess = form.amountTouched ? Math.max(Math.round((actualReceived - netDue) * 100) / 100, 0) : 0
@@ -558,12 +559,21 @@ export default function Payments() {
                   <p className="text-xs font-semibold text-emerald-700">💚 ลูกค้ามียอดเครดิตค้างอยู่ (จากการโอนเกินครั้งก่อน)</p>
                   <p className="text-lg font-bold text-emerald-700 mt-0.5">฿{creditAvailableRaw.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                   <label className="flex items-center gap-2 cursor-pointer mt-2.5">
-                    <input type="checkbox" checked={(form.credit_used || 0) > 0}
-                      onChange={(e) => setForm({...form, credit_used: e.target.checked ? Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected)) : 0})}
+                    <input type="checkbox" checked={form.credit_toggle}
+                      onChange={(e) => setForm({
+                        ...form,
+                        credit_toggle: e.target.checked,
+                        credit_used: e.target.checked
+                          ? Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
+                          : 0
+                      })}
                       className="rounded border-gray-300"/>
                     <span className="text-xs font-medium text-gray-700">ใช้เครดิตนี้หักยอดจองนี้</span>
                   </label>
-                  {(form.credit_used || 0) > 0 && (
+                  {form.credit_toggle && maxUsableCredit === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">⚠️ ยอดรวมยังเป็น 0 บาท กรุณากรอก "ราคา/คน" ก่อน ถึงจะหักเครดิตได้</p>
+                  )}
+                  {form.credit_toggle && (
                     <div className="mt-2">
                       <label className="text-xs text-gray-600 mb-1 block">จำนวนเงินที่จะหัก (บาท)</label>
                       <input type="text" inputMode="numeric" value={form.credit_used || ''}
