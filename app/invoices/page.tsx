@@ -158,7 +158,9 @@ export default function Invoices() {
   const rawTotal = actualCount * pricePerHead
   const subtotal = useVat && vatMode === 'inclusive' ? Math.round((rawTotal / 1.07) * 100) / 100 : rawTotal
   const vatAmount = useVat ? (vatMode === 'inclusive' ? Math.round((rawTotal - subtotal) * 100) / 100 : Math.round(subtotal * 0.07 * 100) / 100) : 0
-  const total = useVat && vatMode === 'inclusive' ? rawTotal : Math.round((subtotal + vatAmount) * 100) / 100
+  // ค่าข้าวไฟล์ทบิน — เก็บอยู่บน booking โดยตรง ไม่คิด VAT
+  const mealTotal = selected ? (selected.meal_price || 0) * (selected.meal_count || 0) * (selected.booked_count || 0) : 0
+  const total = (useVat && vatMode === 'inclusive' ? rawTotal : Math.round((subtotal + vatAmount) * 100) / 100) + mealTotal
   const paid = p?.amount_received || 0
   const remaining = Math.round((total - paid) * 100) / 100
 
@@ -287,29 +289,44 @@ export default function Invoices() {
                   <th className="text-right px-4 py-3 text-sm font-semibold">ราคา/คน</th>
                   <th className="text-right px-4 py-3 text-sm font-semibold rounded-tr-lg">รวม</th>
                 </tr></thead>
-                <tbody><tr className="border-b border-gray-100">
-                  <td className="px-4 py-4"><p className="font-semibold text-gray-800">ตรวจสุขภาพแรงงานต่างด้าว</p><p className="text-sm text-gray-500">จำนวน {actualCount} คน</p></td>
-                  <td className="px-4 py-4 text-right">
-                    <input type="text" inputMode="numeric" value={pricePerHead || ''} onChange={(e) => setPricePerHead(Number(e.target.value.replace(/\D/g,'')))} placeholder="0"
-                      className="w-32 text-right border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] print:border-0 print:p-0"/>
-                  </td>
-                  <td className="px-4 py-4 text-right font-semibold text-gray-800">฿{fmt(rawTotal)}</td>
-                </tr></tbody>
+                <tbody>
+                  <tr className="border-b border-gray-100">
+                    <td className="px-4 py-4"><p className="font-semibold text-gray-800">ตรวจสุขภาพแรงงานต่างด้าว</p><p className="text-sm text-gray-500">จำนวน {actualCount} คน</p></td>
+                    <td className="px-4 py-4 text-right">
+                      <input type="text" inputMode="numeric" value={pricePerHead || ''} onChange={(e) => setPricePerHead(Number(e.target.value.replace(/\D/g,'')))} placeholder="0"
+                        className="w-32 text-right border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] print:border-0 print:p-0"/>
+                    </td>
+                    <td className="px-4 py-4 text-right font-semibold text-gray-800">฿{fmt(rawTotal)}</td>
+                  </tr>
+                  {mealTotal > 0 && (
+                    <tr className="border-b border-gray-100">
+                      <td className="px-4 py-4">
+                        <p className="font-semibold text-gray-800">✈️ ค่าอาหารระหว่างเดินทาง (ไฟล์ทบิน)</p>
+                        <p className="text-sm text-gray-500">฿{selected.meal_price} x {selected.meal_count} มื้อ x {selected.booked_count} คน</p>
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm text-gray-400">-</td>
+                      <td className="px-4 py-4 text-right font-semibold text-gray-800">฿{fmt(mealTotal)}</td>
+                    </tr>
+                  )}
+                </tbody>
               </table>
               <div className="flex justify-end mb-4">
                 <div className="w-72 space-y-2">
                   <div className="print:hidden border border-gray-100 rounded-xl p-3 mb-2">
                     <label className="flex items-center gap-2 cursor-pointer mb-2">
                       <input type="checkbox" checked={useVat} onChange={(e) => setUseVat(e.target.checked)} className="rounded"/>
-                      <span className="text-xs font-medium text-gray-700">คิด VAT 7%</span>
+                      <span className="text-xs font-medium text-gray-700">คิด VAT 7% (เฉพาะยอดตรวจ)</span>
                     </label>
                     {useVat && <div className="flex gap-3 pl-6">
                       <label className="flex items-center gap-1.5 cursor-pointer"><input type="radio" checked={vatMode === 'exclusive'} onChange={() => setVatMode('exclusive')}/><span className="text-xs text-gray-600">ราคา + VAT</span></label>
                       <label className="flex items-center gap-1.5 cursor-pointer"><input type="radio" checked={vatMode === 'inclusive'} onChange={() => setVatMode('inclusive')}/><span className="text-xs text-gray-600">ราคารวม VAT</span></label>
                     </div>}
                   </div>
-                  <div className="flex justify-between text-sm text-gray-600"><span>ยอดก่อน VAT</span><span>฿{fmt(subtotal)}</span></div>
+                  <div className="flex justify-between text-sm text-gray-600"><span>ยอดก่อน VAT (ค่าตรวจ)</span><span>฿{fmt(subtotal)}</span></div>
                   <div className="flex justify-between text-sm"><span className={useVat ? 'text-gray-600' : 'text-gray-300'}>VAT 7%</span><span className={useVat ? 'text-gray-600' : 'text-gray-300'}>฿{fmt(vatAmount)}</span></div>
+                  {mealTotal > 0 && (
+                    <div className="flex justify-between text-sm text-sky-600"><span>✈️ ค่าข้าวไฟล์ทบิน</span><span>฿{fmt(mealTotal)}</span></div>
+                  )}
                   <div className="flex justify-between text-sm text-gray-600 border-t border-gray-100 pt-2"><span>ยอดรับชำระแล้ว</span><span className="text-green-600">฿{fmt(paid)}</span></div>
                   <div className="flex justify-between font-bold text-base border-t-2 border-[#185FA5] pt-2"><span>ยอดคงค้าง</span><span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{fmt(remaining)}</span></div>
                 </div>
@@ -439,6 +456,19 @@ export default function Invoices() {
                     </td>
                     <td className="px-4 py-4 text-right font-semibold text-gray-800">{fmt(subtotal)}</td>
                   </tr>
+                  {mealTotal > 0 && (
+                    <tr className="border-b border-gray-100">
+                      <td className="px-4 py-4">
+                        <p className="font-semibold text-gray-800">✈️ ค่าอาหารระหว่างเดินทาง (ไฟล์ทบิน)</p>
+                        <p className="text-xs text-gray-500">฿{selected.meal_price} x {selected.meal_count} มื้อ x {selected.booked_count} คน</p>
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">1.00</td>
+                      <td className="px-4 py-4 text-right text-sm text-gray-400">-</td>
+                      <td className="px-4 py-4 text-right text-sm text-gray-500">0.00</td>
+                      <td className="px-4 py-4 text-right text-sm">ไม่มี</td>
+                      <td className="px-4 py-4 text-right font-semibold text-gray-800">{fmt(mealTotal)}</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
 
@@ -447,7 +477,7 @@ export default function Invoices() {
                 <div className="w-1/2">
                   <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
                     <p className="text-xs font-semibold text-gray-600 mb-2">สรุป</p>
-                    <div className="flex justify-between text-xs text-gray-600 mb-1"><span>มูลค่าไม่มีหรือยกเว้นภาษี</span><span>{fmt(subtotal)} บาท</span></div>
+                    <div className="flex justify-between text-xs text-gray-600 mb-1"><span>มูลค่าไม่มีหรือยกเว้นภาษี</span><span>{fmt(subtotal + mealTotal)} บาท</span></div>
                     <div className="flex justify-between text-xs text-gray-600 mb-1"><span>หักพันห้าร้อยบาทถ้วน</span><span></span></div>
                   </div>
                 </div>

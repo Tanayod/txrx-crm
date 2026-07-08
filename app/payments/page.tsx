@@ -102,6 +102,11 @@ export default function Payments() {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
   }
 
+  // ค่าข้าวไฟล์ทบิน = ราคา/มื้อ x จำนวนมื้อ x จำนวนคนที่จอง (เก็บอยู่บนตาราง bookings โดยตรง)
+  const getMealTotal = (b: any) => {
+    return (b.meal_price || 0) * (b.meal_count || 0) * (b.booked_count || 0)
+  }
+
   const getNormalTotalWithVat = (p: any) => {
     const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
     if (!p?.use_vat) return workerTotal
@@ -113,7 +118,8 @@ export default function Payments() {
     const p = b.payments?.[0]
     const normalWithVat = getNormalTotalWithVat(p)
     const specialTotal = getSpecialTotal(b)
-    return Math.round((normalWithVat + specialTotal) * 100) / 100
+    const mealTotal = getMealTotal(b)
+    return Math.round((normalWithVat + specialTotal + mealTotal) * 100) / 100
   }
 
   const fetchSlips = async (paymentId: string) => {
@@ -151,6 +157,7 @@ export default function Payments() {
 
   const normalTotal = form.worker_count * form.price_per_worker
   const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
+  const mealAmountSelected = selected ? getMealTotal(selected) : 0
   // VAT คิดจากยอดตรวจสุขภาพปกติ (normalTotal) เท่านั้น
   const vatBase = form.use_vat
     ? (form.vat_mode === 'inclusive' ? normalTotal / 1.07 : normalTotal)
@@ -161,7 +168,7 @@ export default function Payments() {
   const normalTotalWithVat = form.use_vat
     ? (form.vat_mode === 'inclusive' ? normalTotal : normalTotal + vatAmount)
     : normalTotal
-  const grandTotalSelected = normalTotalWithVat + specialAmountSelected
+  const grandTotalSelected = normalTotalWithVat + specialAmountSelected + mealAmountSelected
 
   // ===== ยอดเครดิตสะสม (จากการโอนเกินครั้งก่อน) =====
   const selectedPayment = selected?.payments?.[0]
@@ -276,7 +283,7 @@ export default function Payments() {
     let from = 0
     while (true) {
       const { data } = await supabase.from('bookings')
-        .select('id, case_number, booking_date, customer_id, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount)')
+        .select('id, case_number, booking_date, customer_id, meal_price, meal_count, booked_count, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount)')
         .order('booking_date', { ascending: false })
         .range(from, from + 999)
       if (!data || data.length === 0) break
@@ -415,6 +422,7 @@ export default function Payments() {
       const p = b.payments?.[0]
       const mc = getMc(b)
       const specialAmt = getSpecialTotal(b)
+      const mealAmt = getMealTotal(b)
       const grandTotal = getGrandTotal(b)
       return {
         'เลขจอง': b.case_number,
@@ -424,6 +432,7 @@ export default function Payments() {
         'ราคา/คน': p?.price_per_worker || 0,
         'ยอดปกติ': (p?.worker_count || 0) * (p?.price_per_worker || 0),
         'ยอดตรวจพิเศษ': specialAmt,
+        'ค่าข้าวไฟล์ทบิน': mealAmt,
         'ยอดรวม': grandTotal,
         'ยอดรับ': p?.amount_received || 0,
         'วิธีชำระ': p?.method || '',
@@ -558,7 +567,7 @@ export default function Payments() {
           <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
             <span>แรงงาน</span><span>ราคา/คน</span><span>ยอดปกติ</span>
-            <span>ตรวจพิเศษ/รวม</span><span>รับชำระจริง</span><span>สถานะ</span><span></span>
+            <span>พิเศษ/ข้าว/รวม</span><span>รับชำระจริง</span><span>สถานะ</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -572,6 +581,7 @@ export default function Payments() {
             const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
             const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
             const specialAmt = getSpecialTotal(b)
+            const mealAmt = getMealTotal(b)
             const grandTotal = getGrandTotal(b)
             return (
               <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
@@ -594,7 +604,13 @@ export default function Payments() {
                     <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
                       <IconMicroscope size={10}/>฿{specialAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </span>
-                  ) : <span className="text-xs text-gray-300">-</span>}
+                  ) : null}
+                  {mealAmt > 0 && (
+                    <span className="text-xs bg-sky-50 text-sky-600 px-1.5 py-0.5 rounded-md font-medium inline-block mt-0.5">
+                      ✈️ ค่าข้าว ฿{mealAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </span>
+                  )}
+                  {specialAmt === 0 && mealAmt === 0 && <span className="text-xs text-gray-300">-</span>}
                   {p?.use_vat && <span className="text-xs text-sky-500 mt-0.5 block">รวม VAT</span>}
                   {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>}
                 </div>
@@ -724,6 +740,12 @@ export default function Payments() {
                     <div className="flex justify-between text-xs text-purple-600">
                       <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ</span>
                       <span className="font-medium">฿{specialAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {mealAmountSelected > 0 && (
+                    <div className="flex justify-between text-xs text-sky-600">
+                      <span>✈️ ค่าข้าวไฟล์ทบิน ({selected.meal_price}×{selected.meal_count}มื้อ×{selected.booked_count}คน)</span>
+                      <span className="font-medium">฿{mealAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}
                   <div className="flex justify-between border-t border-gray-100 pt-1.5">

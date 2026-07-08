@@ -41,6 +41,10 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   const [contactEmail, setContactEmail] = useState(companySettings?.email ?? '')
   const [referenceNo, setReferenceNo] = useState(existingReceipt?.reference_no ?? payment?.invoice_no ?? '')
   const [note, setNote] = useState(existingReceipt?.note ?? payment?.note ?? '')
+  // วันที่ออกใบเสร็จ แก้เองได้ (เผื่อออกย้อนหลังหรือล่วงหน้า) ค่าเริ่มต้นเป็นวันนี้
+  const [issueDate, setIssueDate] = useState(existingReceipt?.issue_date ?? new Date().toISOString().slice(0, 10))
+  // ชื่อผู้อนุมัติเอกสาร (แสดงในช่องลายเซ็น) แก้ได้ ค่าเริ่มต้นใช้ชื่อผู้ติดต่อเดียวกับผู้ออกเอกสาร
+  const [approverName, setApproverName] = useState(existingReceipt?.approver_name ?? companySettings?.contact_name ?? '')
 
   const buildDefaultItems = (): ReceiptItem[] => {
     const items: ReceiptItem[] = []
@@ -66,6 +70,19 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
         discount: 0,
         vat: 'ไม่มี',
         amount: specialTotal,
+      })
+    }
+    // ค่าข้าวไฟล์ทบิน (ถ้ามี) — เก็บอยู่บน booking โดยตรง (meal_price, meal_count, booked_count)
+    const mealTotal = (booking?.meal_price || 0) * (booking?.meal_count || 0) * (booking?.booked_count || 0)
+    if (mealTotal > 0) {
+      items.push({
+        description: 'ค่าอาหารระหว่างเดินทาง (ไฟล์ทบิน)',
+        detail: `฿${booking?.meal_price || 0} x ${booking?.meal_count || 0} มื้อ x ${booking?.booked_count || 0} คน`,
+        quantity: 1,
+        unit_price: mealTotal,
+        discount: 0,
+        vat: 'ไม่มี',
+        amount: mealTotal,
       })
     }
     return items
@@ -97,13 +114,14 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
       booking_id: booking.id,
       payment_id: payment.id,
       customer_id: booking.customer_id,
-      issue_date: new Date().toISOString().slice(0, 10),
+      issue_date: issueDate,
       reference_no: referenceNo || null,
       items,
       customer_snapshot: {
         name: customerName, address: customerAddress, tax_id: customerTaxId,
       },
       company_snapshot: { ...(companySettings || {}), contact_name: contactName, phone: contactPhone, email: contactEmail },
+      approver_name: approverName,
       subtotal,
       vat_amount: vatAmount,
       total_amount: totalAmount,
@@ -167,6 +185,12 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
             </div>
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+              <label className="text-xs font-semibold text-amber-700 mb-1 block">วันที่ออกใบเสร็จ</label>
+              <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)}
+                className="w-full border border-amber-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"/>
+              <p className="text-xs text-amber-600 mt-1">ค่าเริ่มต้นคือวันนี้ แก้ไขได้ถ้าต้องการออกย้อนหลังหรือล่วงหน้า</p>
+            </div>
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">ผู้ติดต่อกลับ (ฝั่งบริษัทเรา แสดงในช่อง "ติดต่อกลับที่")</p>
               <div className="grid grid-cols-3 gap-3">
@@ -177,6 +201,11 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                 <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="อีเมล"
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">ผู้อนุมัติเอกสาร (แสดงในช่องลายเซ็น)</label>
+              <input value={approverName} onChange={(e) => setApproverName(e.target.value)} placeholder="ชื่อผู้อนุมัติ"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
 
             <div className="border-t border-gray-100 pt-3">
@@ -265,7 +294,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
             <th className="text-right p-2">จำนวน</th>
             <th className="text-right p-2">ราคา</th>
             <th className="text-right p-2">VAT</th>
-            <th className="text-right p-2 rounded-r-md">มูลค่า</th>
+            <th className="text-right p-2 rounded-r-md">มูลค่ากภาษี</th>
           </tr>
         </thead>
         <tbody>
@@ -299,14 +328,26 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
         </div>
       </div>
       {r.note && <p className="text-xs text-gray-500 mb-6">หมายเหตุ : {r.note}</p>}
-      <div className="grid grid-cols-2 gap-8 mt-10 text-xs text-center">
+
+      {/* ช่องลายเซ็น: ผู้ออกเอกสาร / ผู้อนุมัติเอกสาร / ผู้รับเอกสาร */}
+      <div className="grid grid-cols-3 gap-6 mt-10 text-xs text-center">
         <div>
-          <div className="border-b border-gray-300 h-12"></div>
-          <p className="mt-1 text-gray-500">ผู้รับเงิน / ผู้ออกเอกสาร ({compSnap.company_name})</p>
+          <div className="border-b border-gray-400 h-12"></div>
+          <p className="mt-1 font-medium text-gray-700">{compSnap.contact_name || '-'}</p>
+          <p className="text-gray-400">ผู้ออกเอกสาร (ผู้ขาย)</p>
+          <p className="text-gray-400">{r.issue_date}</p>
         </div>
         <div>
-          <div className="border-b border-gray-300 h-12"></div>
-          <p className="mt-1 text-gray-500">ผู้รับเอกสาร ({custSnap.name})</p>
+          <div className="border-b border-gray-400 h-12"></div>
+          <p className="mt-1 font-medium text-gray-700">{r.approver_name || compSnap.contact_name || '-'}</p>
+          <p className="text-gray-400">ผู้อนุมัติเอกสาร (ผู้ขาย)</p>
+          <p className="text-gray-400">{r.issue_date}</p>
+        </div>
+        <div>
+          <div className="border-b border-gray-400 h-12"></div>
+          <p className="mt-1 font-medium text-gray-700">&nbsp;</p>
+          <p className="text-gray-400">ผู้รับเอกสาร ({custSnap.name})</p>
+          <p className="text-gray-400">&nbsp;</p>
         </div>
       </div>
       {r.is_cancelled && (
