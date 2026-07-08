@@ -31,8 +31,18 @@ export default function Payments() {
     use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
     credit_used: 0, credit_toggle: false, keep_excess_credit: true,
   })
+
+  // ===== ตัดชำระหลายจอง =====
   const [splitPayments, setSplitPayments] = useState<any[]>([])
   const [splitSource, setSplitSource] = useState({ method: 'transfer', bank_account_id: '' })
+  const [splitSearch, setSplitSearch] = useState('')
+  const [splitDateFrom, setSplitDateFrom] = useState('')
+  const [splitDateTo, setSplitDateTo] = useState('')
+  const [splitTotalReceived, setSplitTotalReceived] = useState<number | ''>('')
+  const [splitSlipFile, setSplitSlipFile] = useState<File | null>(null)
+  const [splitLoading, setSplitLoading] = useState(false)
+  const [splitSaving, setSplitSaving] = useState(false)
+
   const [slips, setSlips] = useState<any[]>([])
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
@@ -257,13 +267,31 @@ export default function Payments() {
     if (paymentId) fetchSlips(paymentId)
   }
 
-  const openSplitModal = () => {
-    const unpaidBookings = bookings.filter(b => {
+  // ===== เปิด modal ตัดชำระหลายจอง =====
+  // ดึงข้อมูลจองที่ยังไม่ชำระ "ทั้งหมด" ใหม่ทุกครั้ง (ไม่ผูกกับตัวกรองวันที่ของหน้าหลัก)
+  // เพื่อให้ค้นหาลูกค้าที่จองไว้นานแล้วเจอด้วย
+  const openSplitModal = async () => {
+    setSplitLoading(true)
+    let all: any[] = []
+    let from = 0
+    while (true) {
+      const { data } = await supabase.from('bookings')
+        .select('id, case_number, booking_date, customer_id, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount)')
+        .order('booking_date', { ascending: false })
+        .range(from, from + 999)
+      if (!data || data.length === 0) break
+      all = [...all, ...data]
+      if (data.length < 1000) break
+      from += 1000
+    }
+    const unpaidBookings = all.filter((b: any) => {
       const p = b.payments?.[0]
       return !p || p.payment_status !== 'ชำระเงินแล้ว'
     })
-    setSplitPayments(unpaidBookings.map(b => ({
+    setSplitPayments(unpaidBookings.map((b: any) => ({
       booking_id: b.id,
+      customer_id: b.customer_id,
+      existing_payment_id: b.payments?.[0]?.id || null,
       case_number: b.case_number,
       customer_name: b.customers?.customer_name,
       booking_date: b.booking_date,
@@ -272,33 +300,85 @@ export default function Payments() {
       selected: false,
     })))
     setSplitSource({ method: 'transfer', bank_account_id: '' })
+    setSplitSearch(''); setSplitDateFrom(''); setSplitDateTo('')
+    setSplitTotalReceived(''); setSplitSlipFile(null)
+    setSplitLoading(false)
     setShowSplitModal(true)
+  }
+
+  // แก้ไขรายการทีละตัวโดยอ้างอิงจาก booking_id (ไม่ใช้ index) เพราะรายการที่แสดงอาจถูกกรองอยู่
+  const updateSplitItem = (bookingId: string, patch: any) => {
+    setSplitPayments(prev => prev.map(sp => sp.booking_id === bookingId ? { ...sp, ...patch } : sp))
+  }
+
+  // รายการที่แสดงผลหลังกรองด้วยชื่อลูกค้า/เลขจอง และช่วงวันที่
+  const filteredSplitPayments = splitPayments.filter((sp) => {
+    if (splitSearch && !(sp.customer_name || '').includes(splitSearch) && !(sp.case_number || '').includes(splitSearch)) return false
+    if (splitDateFrom && sp.booking_date < splitDateFrom) return false
+    if (splitDateTo && sp.booking_date > splitDateTo) return false
+    return true
+  })
+
+  // แบ่งยอดที่โอนมาทั้งก้อน ไปตัดตามรายการที่ติ๊กเลือกไว้ เรียงจากบนลงล่าง จนกว่ายอดจะหมด
+  const autoDistributeSplit = () => {
+    let remaining = Number(splitTotalReceived) || 0
+    setSplitPayments(prev => prev.map(sp => {
+      if (!sp.selected) return { ...sp, amount: 0 }
+      const due = sp.grand_total > 0 ? sp.grand_total : 0
+      const cut = Math.max(0, Math.min(remaining, due))
+      remaining = Math.round((remaining - cut) * 100) / 100
+      return { ...sp, amount: cut }
+    }))
   }
 
   const handleSplitSave = async () => {
     const selectedItems = splitPayments.filter(s => s.selected && s.amount > 0)
+    if (selectedItems.length === 0) return
+    setSplitSaving(true)
+
+    // อัพโหลดสลิปครั้งเดียว แล้วผูกกับทุกรายการที่เลือก
+    let slipUrl: string | null = null
+    let slipFileName: string | null = null
+    if (splitSlipFile) {
+      const safeName = splitSlipFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const fileName = `split_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safeName}`
+      const { data, error } = await supabase.storage.from('certificates').upload(fileName, splitSlipFile)
+      if (!error && data) {
+        const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
+        slipUrl = urlData.publicUrl
+        slipFileName = splitSlipFile.name
+      }
+    }
+
     for (const item of selectedItems) {
-      const booking = bookings.find(b => b.id === item.booking_id)
-      const p = booking?.payments?.[0]
       const payload = {
         booking_id: item.booking_id,
-        customer_id: booking?.customer_id,
+        customer_id: item.customer_id,
         amount_received: item.amount,
         method: splitSource.method,
         bank_account_id: splitSource.method === 'transfer' ? (splitSource.bank_account_id || null) : null,
         payment_status: 'ชำระเงินแล้ว',
         paid_at: new Date().toISOString(),
+        is_verified: !!slipUrl,
       }
-      if (p?.id) {
-        await supabase.from('payments').update(payload).eq('id', p.id)
+      let paymentId = item.existing_payment_id
+      if (paymentId) {
+        await supabase.from('payments').update(payload).eq('id', paymentId)
       } else {
-        await supabase.from('payments').insert([payload])
+        const { data: inserted } = await supabase.from('payments').insert([payload]).select().single()
+        paymentId = inserted?.id
+      }
+      if (slipUrl && paymentId) {
+        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: slipFileName, storage_url: slipUrl }])
       }
     }
-    fetchBookings(); setShowSplitModal(false)
+    fetchBookings()
+    setShowSplitModal(false)
+    setSplitSaving(false)
   }
 
   const splitTotal = splitPayments.filter(s => s.selected).reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+  const splitUnallocated = Math.round(((Number(splitTotalReceived) || 0) - splitTotal) * 100) / 100
 
   const getPaymentStatus = (booking: any) => {
     const p = booking.payments?.[0]
@@ -810,15 +890,54 @@ export default function Payments() {
 
       {showSplitModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <div>
                 <p className="text-base font-semibold text-gray-800">ตัดชำระหลายจอง</p>
-                <p className="text-xs text-gray-400 mt-0.5">เลือกรายการที่ต้องการตัดและระบุยอด</p>
+                <p className="text-xs text-gray-400 mt-0.5">ใช้เมื่อลูกค้าโอนมาสลิปเดียว แต่มีหลายรายการจอง</p>
               </div>
               <button onClick={() => setShowSplitModal(false)} className="text-gray-400 hover:text-gray-600"><IconX size={20}/></button>
             </div>
+
+            {/* ค้นหา / กรอง */}
+            <div className="p-4 border-b border-gray-100 grid grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs text-gray-500 mb-1 block">ค้นหาลูกค้า หรือเลขจอง</label>
+                <div className="relative">
+                  <IconSearch size={14} className="absolute left-3 top-2.5 text-gray-400"/>
+                  <input type="text" value={splitSearch} onChange={(e) => setSplitSearch(e.target.value)}
+                    placeholder="พิมพ์ชื่อลูกค้า..."
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่ม</label>
+                <input type="date" value={splitDateFrom} onChange={(e) => setSplitDateFrom(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">วันที่สิ้นสุด</label>
+                <input type="date" value={splitDateTo} onChange={(e) => setSplitDateTo(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+            </div>
+
+            {/* ยอดโอนจริง + วิธีชำระ + สลิป */}
             <div className="p-4 border-b border-gray-100 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">ยอดที่ลูกค้าโอนมาจริง (บาท) — ยอดสลิปเดียว</label>
+                <div className="flex gap-2">
+                  <input type="text" inputMode="numeric" value={splitTotalReceived}
+                    onChange={(e) => setSplitTotalReceived(e.target.value === '' ? '' : Number(e.target.value.replace(/\D/g,'')))}
+                    placeholder="0"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  <button type="button" onClick={autoDistributeSplit}
+                    className="px-3 py-2 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] whitespace-nowrap">
+                    แบ่งอัตโนมัติ
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">ติ๊กเลือกรายการที่ต้องการก่อน แล้วกด "แบ่งอัตโนมัติ" ระบบจะตัดยอดให้ตามลำดับจนกว่ายอดจะหมด</p>
+              </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">วิธีชำระ</label>
                 <select value={splitSource.method}
@@ -829,14 +948,8 @@ export default function Payments() {
                   <option value="credit">เครดิต</option>
                 </select>
               </div>
-              <div className="flex items-end">
-                <div className="bg-blue-50 rounded-xl px-4 py-2 flex-1 text-center">
-                  <p className="text-xs text-blue-500">ยอดที่ตัดทั้งหมด</p>
-                  <p className="text-xl font-bold text-[#185FA5]">฿{splitTotal.toLocaleString()}</p>
-                </div>
-              </div>
               {splitSource.method === 'transfer' && (
-                <div className="col-span-2">
+                <div>
                   <label className="text-xs text-gray-500 mb-1 block">บัญชีที่รับโอน</label>
                   <select value={splitSource.bank_account_id} onChange={(e) => setSplitSource({...splitSource, bank_account_id: e.target.value})}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
@@ -847,52 +960,76 @@ export default function Payments() {
                   </select>
                 </div>
               )}
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-6 gap-2 px-3 py-2 bg-gray-50 rounded-lg text-xs font-semibold text-gray-500 mb-2">
-                <span className="col-span-2">ลูกค้า / เลขจอง</span>
-                <span>วันที่</span>
-                <span>ยอดรวม</span>
-                <span className="col-span-2">ยอดที่ตัด (บาท)</span>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">แนบสลิป (ไฟล์เดียว ใช้กับทุกรายการที่เลือก)</label>
+                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500 transition-colors">
+                  <IconUpload size={14}/>
+                  <span className="truncate">{splitSlipFile ? splitSlipFile.name : 'เลือกไฟล์สลิป...'}</span>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setSplitSlipFile(e.target.files?.[0] || null)} className="hidden"/>
+                </label>
               </div>
-              {splitPayments.map((sp, i) => (
-                <div key={sp.booking_id} className={`grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg mb-1.5 items-center border transition-colors ${sp.selected ? 'border-blue-200 bg-blue-50' : 'border-gray-100 bg-white'}`}>
-                  <div className="col-span-2 flex items-center gap-2">
-                    <input type="checkbox" checked={sp.selected}
-                      onChange={(e) => {
-                        const updated = [...splitPayments]
-                        updated[i].selected = e.target.checked
-                        setSplitPayments(updated)
-                      }}
-                      className="rounded border-gray-300"/>
-                    <div>
-                      <p className="text-xs font-medium text-gray-800">{sp.customer_name}</p>
-                      <p className="text-xs text-gray-400 font-mono">{sp.case_number}</p>
+            </div>
+
+            <div className="px-4 pt-3 pb-1 grid grid-cols-3 gap-2">
+              <div className="bg-blue-50 rounded-xl px-4 py-2 text-center">
+                <p className="text-xs text-blue-500">ยอดที่โอนมา</p>
+                <p className="text-lg font-bold text-[#185FA5]">฿{(Number(splitTotalReceived) || 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-emerald-50 rounded-xl px-4 py-2 text-center">
+                <p className="text-xs text-emerald-500">ยอดที่ตัดแล้ว</p>
+                <p className="text-lg font-bold text-emerald-600">฿{splitTotal.toLocaleString()}</p>
+              </div>
+              <div className={`rounded-xl px-4 py-2 text-center ${splitUnallocated === 0 ? 'bg-gray-50' : 'bg-amber-50'}`}>
+                <p className={`text-xs ${splitUnallocated === 0 ? 'text-gray-400' : 'text-amber-600'}`}>ยังไม่ได้จัดสรร</p>
+                <p className={`text-lg font-bold ${splitUnallocated === 0 ? 'text-gray-400' : 'text-amber-600'}`}>฿{splitUnallocated.toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {splitLoading ? (
+                <p className="text-sm text-gray-400 text-center py-8">กำลังโหลดรายการ...</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-6 gap-2 px-3 py-2 bg-gray-50 rounded-lg text-xs font-semibold text-gray-500 mb-2">
+                    <span className="col-span-2">ลูกค้า / เลขจอง</span>
+                    <span>วันที่</span>
+                    <span>ยอดรวม</span>
+                    <span className="col-span-2">ยอดที่ตัด (บาท)</span>
+                  </div>
+                  {filteredSplitPayments.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-8">ไม่พบรายการที่ค้นหา</p>
+                  ) : filteredSplitPayments.map((sp) => (
+                    <div key={sp.booking_id} className={`grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg mb-1.5 items-center border transition-colors ${sp.selected ? 'border-blue-200 bg-blue-50' : 'border-gray-100 bg-white'}`}>
+                      <div className="col-span-2 flex items-center gap-2">
+                        <input type="checkbox" checked={sp.selected}
+                          onChange={(e) => updateSplitItem(sp.booking_id, { selected: e.target.checked, amount: e.target.checked ? sp.amount : 0 })}
+                          className="rounded border-gray-300"/>
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">{sp.customer_name}</p>
+                          <p className="text-xs text-gray-400 font-mono">{sp.case_number}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-500">{sp.booking_date}</span>
+                      <span className="text-xs font-medium text-gray-700">{sp.grand_total > 0 ? `฿${sp.grand_total.toLocaleString()}` : '-'}</span>
+                      <div className="col-span-2">
+                        <input type="text" inputMode="numeric"
+                          value={sp.amount || ''}
+                          disabled={!sp.selected}
+                          onChange={(e) => updateSplitItem(sp.booking_id, { amount: Number(e.target.value.replace(/\D/g,'')) })}
+                          placeholder="0"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] disabled:bg-gray-50 disabled:text-gray-300"/>
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-xs text-gray-500">{sp.booking_date}</span>
-                  <span className="text-xs font-medium text-gray-700">{sp.grand_total > 0 ? `฿${sp.grand_total.toLocaleString()}` : '-'}</span>
-                  <div className="col-span-2">
-                    <input type="text" inputMode="numeric"
-                      value={sp.amount || ''}
-                      disabled={!sp.selected}
-                      onChange={(e) => {
-                        const updated = [...splitPayments]
-                        updated[i].amount = Number(e.target.value.replace(/\D/g,''))
-                        setSplitPayments(updated)
-                      }}
-                      placeholder="0"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] disabled:bg-gray-50 disabled:text-gray-300"/>
-                  </div>
-                </div>
-              ))}
+                  ))}
+                </>
+              )}
             </div>
             <div className="p-4 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setShowSplitModal(false)} className="px-5 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSplitSave}
-                disabled={splitPayments.filter(s => s.selected && s.amount > 0).length === 0}
+                disabled={splitSaving || splitPayments.filter(s => s.selected && s.amount > 0).length === 0}
                 className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50 font-medium transition-colors">
-                บันทึก ({splitPayments.filter(s => s.selected).length} รายการ)
+                {splitSaving ? 'กำลังบันทึก...' : `บันทึก (${splitPayments.filter(s => s.selected).length} รายการ)`}
               </button>
             </div>
           </div>
