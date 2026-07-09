@@ -32,6 +32,8 @@ export default function Bookings() {
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [search, setSearch] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
@@ -60,6 +62,10 @@ export default function Bookings() {
   if (ready && !loaded) { fetchAll(); setLoaded(true) }
 
   async function fetchAll() { fetchBookings(); fetchCustomers(); fetchLocations() }
+
+  // รองรับทั้ง 2 กรณี: payments เป็น array (ปกติ) หรือเป็น object เดี่ยว
+  // (Supabase จะส่งมาเป็น object เดี่ยวถ้า column booking_id มี UNIQUE constraint ผูกอยู่ — ซึ่งตอนนี้มีแล้วเพื่อกัน payment ซ้ำ)
+  const getP = (b: any) => Array.isArray(b?.payments) ? b.payments?.[0] : b?.payments
 
   async function fetchBookings(dateFrom?: string, dateTo?: string) {
     let all: any[] = []
@@ -149,26 +155,51 @@ export default function Bookings() {
     setSaving(false); fetchBookings(); setShowModal(false)
   }
 
-  // ลบ booking ต้องลบข้อมูลที่ผูกอยู่ทุกตารางก่อน ไม่งั้นจะชน FK constraint (409 Conflict)
-  // รายการตารางที่ผูกกับ booking_id ทั้งหมด ณ ปัจจุบัน: medical_cases, payments, special_exams, sim_items, payment_slips (ผูกผ่าน payments)
+  // ลบ booking ต้องลบข้อมูลที่ผูกอยู่ทุกตารางก่อน ไม่งั้นจะชน FK constraint
+  // ลำดับสำคัญ: receipts ผูกกับทั้ง payment_id และ booking_id โดยตรง ต้องลบ "ก่อน" payment_slips และ payments เสมอ
+  // รายการตารางที่ผูกกับ booking_id ทั้งหมด ณ ปัจจุบัน: medical_cases, payments, special_exams, sim_items, receipts, payment_slips (ผูกผ่าน payments)
   const handleDelete = async () => {
     if (!deleteId) return
-    // payment_slips ผูกกับ payment_id ไม่ใช่ booking_id ตรง ต้องหา payment ก่อน
-    const { data: paymentRows } = await supabase.from('payments').select('id').eq('booking_id', deleteId)
-    const paymentIds = (paymentRows || []).map((p: any) => p.id)
-    if (paymentIds.length > 0) {
-      await supabase.from('payment_slips').delete().in('payment_id', paymentIds)
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const { data: paymentRows } = await supabase.from('payments').select('id').eq('booking_id', deleteId)
+      const paymentIds = (paymentRows || []).map((p: any) => p.id)
+
+      // ลบใบเสร็จก่อนเสมอ (ผูกได้ทั้งผ่าน payment_id และ booking_id โดยตรง)
+      if (paymentIds.length > 0) {
+        const { error: recErr1 } = await supabase.from('receipts').delete().in('payment_id', paymentIds)
+        if (recErr1) throw recErr1
+      }
+      const { error: recErr2 } = await supabase.from('receipts').delete().eq('booking_id', deleteId)
+      if (recErr2) throw recErr2
+
+      if (paymentIds.length > 0) {
+        const { error: slipErr } = await supabase.from('payment_slips').delete().in('payment_id', paymentIds)
+        if (slipErr) throw slipErr
+      }
+      const { error: mcErr } = await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
+      if (mcErr) throw mcErr
+      const { error: payErr } = await supabase.from('payments').delete().eq('booking_id', deleteId)
+      if (payErr) throw payErr
+      const { error: spErr } = await supabase.from('special_exams').delete().eq('booking_id', deleteId)
+      if (spErr) throw spErr
+      const { error: simErr } = await supabase.from('sim_items').delete().eq('booking_id', deleteId)
+      if (simErr) throw simErr
+      const { error: bkErr } = await supabase.from('bookings').delete().eq('id', deleteId)
+      if (bkErr) throw bkErr
+
+      setDeleteId(null)
+      fetchBookings()
+    } catch (err: any) {
+      setDeleteError(err?.message || 'ลบไม่สำเร็จ มีข้อมูลบางอย่างผูกอยู่ที่ยังลบไม่ได้')
+    } finally {
+      setDeleting(false)
     }
-    await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
-    await supabase.from('payments').delete().eq('booking_id', deleteId)
-    await supabase.from('special_exams').delete().eq('booking_id', deleteId)
-    await supabase.from('sim_items').delete().eq('booking_id', deleteId)
-    await supabase.from('bookings').delete().eq('id', deleteId)
-    setDeleteId(null); fetchBookings()
   }
 
   const getPaymentStatus = (b: any) => {
-    const p = b.payments?.[0]
+    const p = getP(b)
     if (!p) return { label: 'ยังไม่ชำระ', color: 'bg-gray-100 text-gray-500' }
     const map: any = {
       'ชำระเงินแล้ว': 'bg-green-100 text-green-700',
@@ -229,7 +260,7 @@ export default function Bookings() {
   const exportExcel = () => {
     const rows = filtered.map(b => {
       const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
-      const p = b.payments?.[0]
+      const p = getP(b)
       return {
         'เลขจอง': b.case_number,
         'ลูกค้า': b.customers?.customer_name,
@@ -430,7 +461,7 @@ export default function Bookings() {
                   </span>
                   <span className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => openEdit(b)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={15}/></button>
-                    <button onClick={() => setDeleteId(b.id)} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>
+                    <button onClick={() => { setDeleteId(b.id); setDeleteError(null) }} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>
                   </span>
                 </div>
                 {expandedId === b.id && (
@@ -691,12 +722,20 @@ export default function Bookings() {
 
       {deleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl">
+          <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl">
             <p className="text-base font-semibold text-gray-800 mb-2">ยืนยันการลบ</p>
-            <p className="text-sm text-gray-500 mb-5">ต้องการลบรายการจองนี้ใช่ไหม?</p>
+            <p className="text-sm text-gray-500 mb-3">ต้องการลบรายการจองนี้ใช่ไหม? (จะลบข้อมูลการเงิน ใบเสร็จ และข้อมูลที่ผูกอยู่ทั้งหมดของจองนี้ด้วย)</p>
+            {deleteError && (
+              <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-3">
+                <p className="text-xs text-red-600">{deleteError}</p>
+              </div>
+            )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
-              <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">ลบ</button>
+              <button onClick={() => { setDeleteId(null); setDeleteError(null) }} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50">
+                {deleting ? 'กำลังลบ...' : 'ลบ'}
+              </button>
             </div>
           </div>
         </div>
