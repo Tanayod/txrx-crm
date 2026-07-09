@@ -29,11 +29,12 @@ export default function FinanceReport() {
     setLoading(true)
 
     // ดึง bookings พร้อม payments แยก payment_slips ออก
+    // เพิ่ม wht_amount, credit_used เพื่อคำนวณ "ยอดที่ควรได้รับสุทธิ" ให้ถูกต้อง
     let all: any[] = []
     let from = 0
     while (true) {
       let q = supabase.from('bookings')
-        .select('id, case_number, booking_date, booked_count, location_name, customers(customer_name, type), medical_cases(actual_count), payments(id, total_amount, amount_received, payment_status, method, invoice_no, ref_no)')
+        .select('id, case_number, booking_date, booked_count, location_name, customers(customer_name, type), medical_cases(actual_count), payments(id, total_amount, amount_received, payment_status, method, invoice_no, ref_no, wht_amount, credit_used, credit_deposited)')
         .order('booking_date', { ascending: false })
       if (filterDateFrom) q = q.gte('booking_date', filterDateFrom)
       if (filterDateTo) q = q.lte('booking_date', filterDateTo)
@@ -69,7 +70,11 @@ export default function FinanceReport() {
       const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
       const total = p?.total_amount || 0
       const received = p?.amount_received || 0
-      const diff = received - total
+      const whtAmount = p?.wht_amount || 0
+      const creditUsed = p?.credit_used || 0
+      // ยอดที่ควรได้รับสุทธิ = ยอดรวม - หัก ณ ที่จ่าย - เครดิตที่นำมาหัก (ทั้งสองอย่างนี้ไม่ใช่เงินสดที่ต้องรับ)
+      const netExpected = Math.max(Math.round((total - whtAmount - creditUsed) * 100) / 100, 0)
+      const diff = Math.round((received - netExpected) * 100) / 100
       const status = p?.payment_status || 'ยังไม่ชำระ'
       const hasSlip = p?.id ? slipSet.has(p.id) : false
       const slipCount = p?.id ? (slipCountMap[p.id] || 0) : 0
@@ -90,6 +95,9 @@ export default function FinanceReport() {
         location_name: b.location_name || '-',
         actual_count: mc?.actual_count || b.booked_count || 0,
         total_amount: total,
+        wht_amount: whtAmount,
+        credit_used: creditUsed,
+        net_expected: netExpected,
         amount_received: received,
         diff,
         payment_status: status,
@@ -119,7 +127,10 @@ export default function FinanceReport() {
   const summary = {
     total: filtered.length,
     totalAmount: filtered.reduce((s, r) => s + r.total_amount, 0),
+    netExpectedTotal: filtered.reduce((s, r) => s + r.net_expected, 0),
     totalReceived: filtered.reduce((s, r) => s + r.amount_received, 0),
+    totalWht: filtered.reduce((s, r) => s + r.wht_amount, 0),
+    totalCreditUsed: filtered.reduce((s, r) => s + r.credit_used, 0),
     paid: filtered.filter(r => r.pay_type === 'ชำระครบ').length,
     paidAmount: filtered.filter(r => r.pay_type === 'ชำระครบ').reduce((s, r) => s + r.amount_received, 0),
     unpaid: filtered.filter(r => r.pay_type === 'ยังไม่ชำระ' || r.pay_type === 'ค้างชำระ').length,
@@ -148,6 +159,8 @@ export default function FinanceReport() {
       'เลขจอง': r.case_number, 'วันที่': r.booking_date,
       'ลูกค้า': r.customer_name, 'สถานที่': r.location_name,
       'จำนวน (คน)': r.actual_count, 'ยอดรวม (บาท)': r.total_amount,
+      'หัก ณ ที่จ่าย': r.wht_amount, 'เครดิตที่ใช้หัก': r.credit_used,
+      'ยอดที่ควรได้รับสุทธิ': r.net_expected,
       'รับชำระจริง (บาท)': r.amount_received, 'ส่วนต่าง': r.diff,
       'สถานะ': r.pay_type, 'วิธีชำระ': r.method,
       'เลขใบวางบิล': r.invoice_no, 'เลขอ้างอิง': r.ref_no,
@@ -199,6 +212,20 @@ export default function FinanceReport() {
             ))}
           </div>
         </div>
+
+        {/* หัก ณ ที่จ่าย / เครดิต Summary */}
+        {(summary.totalWht > 0 || summary.totalCreditUsed > 0) && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 flex justify-between items-center">
+              <span className="text-sm text-rose-600">💸 หัก ณ ที่จ่าย 3% รวม</span>
+              <span className="text-lg font-bold text-rose-600">฿{fmt(summary.totalWht)}</span>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex justify-between items-center">
+              <span className="text-sm text-emerald-600">💚 เครดิตที่ใช้หักยอดรวม</span>
+              <span className="text-lg font-bold text-emerald-600">฿{fmt(summary.totalCreditUsed)}</span>
+            </div>
+          </div>
+        )}
 
         {/* Slip Summary */}
         <div className="grid grid-cols-2 gap-3 mb-4">
@@ -266,11 +293,12 @@ export default function FinanceReport() {
 
         {/* Table */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-10 gap-2 px-4 py-2.5 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-11 gap-2 px-4 py-2.5 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span className="col-span-2">เลขจอง / วันที่</span>
             <span className="col-span-2">ลูกค้า / สถานที่</span>
             <span>จำนวน</span>
             <span>ยอดรวม</span>
+            <span>ยอดสุทธิที่ควรได้</span>
             <span>รับจริง</span>
             <span>ส่วนต่าง</span>
             <span>สถานะ</span>
@@ -281,7 +309,7 @@ export default function FinanceReport() {
           ) : filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ — ลองกดปุ่ม "โหลดใหม่"</div>
           ) : filtered.map((r, i) => (
-            <div key={r.id} className={`grid grid-cols-10 gap-2 px-4 py-3 border-b border-gray-50 text-xs hover:bg-blue-50/20 items-center ${i % 2 !== 0 ? 'bg-gray-50/30' : ''}`}>
+            <div key={r.id} className={`grid grid-cols-11 gap-2 px-4 py-3 border-b border-gray-50 text-xs hover:bg-blue-50/20 items-center ${i % 2 !== 0 ? 'bg-gray-50/30' : ''}`}>
               <div className="col-span-2">
                 <p className="font-mono text-gray-500">{r.case_number}</p>
                 <p className="text-gray-400">{r.booking_date}</p>
@@ -292,6 +320,15 @@ export default function FinanceReport() {
               </div>
               <span className="text-gray-600">{r.actual_count} คน</span>
               <span className="font-medium text-gray-700">{r.total_amount > 0 ? `฿${fmt(r.total_amount)}` : '-'}</span>
+              <div>
+                <span className="font-medium text-gray-700">{r.net_expected > 0 ? `฿${fmt(r.net_expected)}` : '-'}</span>
+                {(r.wht_amount > 0 || r.credit_used > 0) && (
+                  <p className="text-gray-400 mt-0.5">
+                    {r.wht_amount > 0 && <span>หัก ณ ที่จ่าย ฿{fmt(r.wht_amount)} </span>}
+                    {r.credit_used > 0 && <span>เครดิต ฿{fmt(r.credit_used)}</span>}
+                  </p>
+                )}
+              </div>
               <span className={r.amount_received > 0 ? 'font-medium text-green-600' : 'text-gray-300'}>{r.amount_received > 0 ? `฿${fmt(r.amount_received)}` : '-'}</span>
               <span className={r.diff > 0.01 ? 'text-blue-600 font-medium' : r.diff < -0.01 ? 'text-orange-500 font-medium' : 'text-gray-300'}>
                 {Math.abs(r.diff) > 0.01 ? `${r.diff > 0 ? '+' : ''}฿${fmt(r.diff)}` : '-'}
@@ -301,14 +338,15 @@ export default function FinanceReport() {
             </div>
           ))}
           {filtered.length > 0 && (
-            <div className="grid grid-cols-10 gap-2 px-4 py-3 bg-gray-800 text-xs font-bold text-white rounded-b-xl">
+            <div className="grid grid-cols-11 gap-2 px-4 py-3 bg-gray-800 text-xs font-bold text-white rounded-b-xl">
               <div className="col-span-2">รวม {filtered.length} รายการ</div>
               <div className="col-span-2"></div>
               <span></span>
               <span>฿{fmt(summary.totalAmount)}</span>
+              <span>฿{fmt(summary.netExpectedTotal)}</span>
               <span className="text-green-400">฿{fmt(summary.totalReceived)}</span>
-              <span className={(summary.totalReceived - summary.totalAmount) > 0.01 ? 'text-blue-400' : (summary.totalReceived - summary.totalAmount) < -0.01 ? 'text-orange-400' : 'text-gray-400'}>
-                {Math.abs(summary.totalReceived - summary.totalAmount) > 0.01 ? `${(summary.totalReceived - summary.totalAmount) > 0 ? '+' : ''}฿${fmt(summary.totalReceived - summary.totalAmount)}` : '-'}
+              <span className={(summary.totalReceived - summary.netExpectedTotal) > 0.01 ? 'text-blue-400' : (summary.totalReceived - summary.netExpectedTotal) < -0.01 ? 'text-orange-400' : 'text-gray-400'}>
+                {Math.abs(summary.totalReceived - summary.netExpectedTotal) > 0.01 ? `${(summary.totalReceived - summary.netExpectedTotal) > 0 ? '+' : ''}฿${fmt(summary.totalReceived - summary.netExpectedTotal)}` : '-'}
               </span>
               <span></span>
               <span className="text-green-400">{summary.hasSlip}/{filtered.length}</span>
