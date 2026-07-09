@@ -100,6 +100,10 @@ export default function Payments() {
 
   const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
+  // รองรับทั้ง 2 กรณี: payments เป็น array (ปกติเวลามีได้หลายแถว) หรือเป็น object เดี่ยว
+  // (Supabase จะส่งมาเป็น object เดี่ยวถ้า column booking_id มี UNIQUE constraint ผูกอยู่)
+  const getP = (b: any) => Array.isArray(b?.payments) ? b.payments?.[0] : b?.payments
+
   const getSpecialTotal = (b: any) => {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
   }
@@ -118,7 +122,7 @@ export default function Payments() {
   }
 
   const getGrandTotal = (b: any) => {
-    const p = b.payments?.[0]
+    const p = getP(b)
     const normalWithVat = getNormalTotalWithVat(p)
     const specialTotal = getSpecialTotal(b)
     const mealTotal = getMealTotal(b) // ไม่ผ่าน VAT
@@ -132,7 +136,7 @@ export default function Payments() {
 
   const handleOpenModal = (booking: any) => {
     setSelected(booking)
-    const p = booking.payments?.[0]
+    const p = getP(booking)
     const mc = getMc(booking)
     const actualCount = mc?.actual_count || booking.booked_count || 0
     setForm({
@@ -178,7 +182,7 @@ export default function Payments() {
   const whtAmount = form.use_wht ? Math.round(vatBase * 0.03 * 100) / 100 : 0
 
   // ===== ยอดเครดิตสะสม (จากการโอนเกินครั้งก่อน) =====
-  const selectedPayment = selected?.payments?.[0]
+  const selectedPayment = getP(selected)
   const prevCreditUsed = selectedPayment?.credit_used || 0
   const prevCreditDeposited = selectedPayment?.credit_deposited || 0
   const creditAvailableRaw = selected?.customers?.overpayment_balance || 0
@@ -194,7 +198,7 @@ export default function Payments() {
     // กันกดปุ่มซ้ำ (double-click) ซึ่งเคยทำให้เกิด payment ซ้ำ 2 แถวสำหรับจองเดียวกัน
     if (savingPayment) return
     setSavingPayment(true)
-    const p = selected?.payments?.[0]
+    const p = getP(selected)
     const payload = {
       amount_received: actualReceived,
       method: form.method,
@@ -257,7 +261,7 @@ export default function Payments() {
     if (files.length === 0) return
     setUploading(true)
 
-    let paymentId = selected?.payments?.[0]?.id
+    let paymentId = getP(selected)?.id
     if (!paymentId) {
       const { data: inserted } = await supabase
         .from('payments')
@@ -283,7 +287,7 @@ export default function Payments() {
 
   const handleDeleteSlip = async (slipId: string) => {
     await supabase.from('payment_slips').delete().eq('id', slipId)
-    const paymentId = selected?.payments?.[0]?.id
+    const paymentId = getP(selected)?.id
     if (paymentId) fetchSlips(paymentId)
   }
 
@@ -305,13 +309,13 @@ export default function Payments() {
       from += 1000
     }
     const unpaidBookings = all.filter((b: any) => {
-      const p = b.payments?.[0]
+      const p = getP(b)
       return !p || p.payment_status !== 'ชำระเงินแล้ว'
     })
     setSplitPayments(unpaidBookings.map((b: any) => ({
       booking_id: b.id,
       customer_id: b.customer_id,
-      existing_payment_id: b.payments?.[0]?.id || null,
+      existing_payment_id: getP(b)?.id || null,
       case_number: b.case_number,
       customer_name: b.customers?.customer_name,
       booking_date: b.booking_date,
@@ -401,7 +405,7 @@ export default function Payments() {
   const splitUnallocated = Math.round(((Number(splitTotalReceived) || 0) - splitTotal) * 100) / 100
 
   const getPaymentStatus = (booking: any) => {
-    const p = booking.payments?.[0]
+    const p = getP(booking)
     if (!p) return { label: 'ยังไม่ชำระ', color: 'bg-gray-100 text-gray-500' }
     const map: any = {
       'ชำระเงินแล้ว': 'bg-green-100 text-green-700',
@@ -413,7 +417,7 @@ export default function Payments() {
   }
 
   const filtered = bookings.filter(b => {
-    const p = b.payments?.[0]
+    const p = getP(b)
     const mc = getMc(b)
     const status = getPaymentStatus(b)
     if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
@@ -432,7 +436,7 @@ export default function Payments() {
 
   const exportExcel = () => {
     const rows = filtered.map(b => {
-      const p = b.payments?.[0]
+      const p = getP(b)
       const mc = getMc(b)
       const specialAmt = getSpecialTotal(b)
       const mealAmt = getMealTotal(b)
@@ -590,7 +594,7 @@ export default function Payments() {
             </div>
           ) : filtered.map((b) => {
             const status = getPaymentStatus(b)
-            const p = b.payments?.[0]
+            const p = getP(b)
             const mc = getMc(b)
             const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
             const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
@@ -910,8 +914,8 @@ export default function Payments() {
                   <p className="text-xs font-medium text-gray-600">ใบเสร็จรับเงิน ({receiptsForBooking.length} ใบ)</p>
                   <button
                     onClick={() => setReceiptModal({ mode: 'create' })}
-                    disabled={!selected?.payments?.[0]?.id}
-                    title={!selected?.payments?.[0]?.id ? 'กรุณาบันทึกการชำระเงินก่อน' : ''}
+                    disabled={!getP(selected)?.id}
+                    title={!getP(selected)?.id ? 'กรุณาบันทึกการชำระเงินก่อน' : ''}
                     className="flex items-center gap-1 text-xs bg-[#185FA5] text-white px-3 py-1.5 rounded-lg hover:bg-[#0C447C] disabled:opacity-40 disabled:cursor-not-allowed">
                     <IconReceipt size={13}/> ออกใบเสร็จ
                   </button>
@@ -1099,7 +1103,7 @@ export default function Payments() {
         <ReceiptModal
           mode={receiptModal.mode}
           booking={selected}
-          payment={selected?.payments?.[0]}
+          payment={getP(selected)}
           companySettings={companySettings}
           existingReceipt={receiptModal.receipt}
           onClose={() => setReceiptModal(null)}
