@@ -58,6 +58,7 @@ export default function Payments() {
   const [filterActualMin, setFilterActualMin] = useState('')
   const [filterActualMax, setFilterActualMax] = useState('')
   const [filterHasActual, setFilterHasActual] = useState('')
+  const [filterSlip, setFilterSlip] = useState('')
 
   if (ready && !loaded) { fetchBookings(); fetchBankAccounts(); fetchCompanySettings(); setLoaded(true) }
 
@@ -95,6 +96,28 @@ export default function Payments() {
       if (data.length < 1000) break
       from += 1000
     }
+
+    // ดึงข้อมูลสลิปแยก ผูกกับแต่ละ booking ผ่าน payment_id เพื่อโชว์สถานะแนบสลิป/ยังไม่แนบในตารางหลัก
+    const paymentIds = all.flatMap((b: any) => {
+      const p = getP(b)
+      return p?.id ? [p.id] : []
+    })
+    const slipCountMap: any = {}
+    if (paymentIds.length > 0) {
+      const { data: slipsData } = await supabase
+        .from('payment_slips')
+        .select('payment_id')
+        .in('payment_id', paymentIds)
+      slipsData?.forEach((s: any) => {
+        slipCountMap[s.payment_id] = (slipCountMap[s.payment_id] || 0) + 1
+      })
+    }
+    all = all.map((b: any) => {
+      const p = getP(b)
+      const slipCount = p?.id ? (slipCountMap[p.id] || 0) : 0
+      return { ...b, _slipCount: slipCount, _hasSlip: slipCount > 0 }
+    })
+
     setBookings(all)
   }
 
@@ -431,6 +454,8 @@ export default function Payments() {
     if (filterActualMax && (mc?.actual_count ?? 99999) > Number(filterActualMax)) return false
     if (filterHasActual === 'มี' && !(mc?.actual_count > 0)) return false
     if (filterHasActual === 'ไม่มี' && mc?.actual_count > 0) return false
+    if (filterSlip === 'มี' && !b._hasSlip) return false
+    if (filterSlip === 'ไม่มี' && b._hasSlip) return false
     return true
   })
 
@@ -458,6 +483,7 @@ export default function Payments() {
         'เครดิตที่ใช้หัก': p?.credit_used || 0,
         'เครดิตที่เก็บไว้(เกินมา)': p?.credit_deposited || 0,
         'เครดิตคงเหลือลูกค้า': b.customers?.overpayment_balance || 0,
+        'แนบสลิป': b._hasSlip ? `มี (${b._slipCount} ไฟล์)` : 'ยังไม่แนบ',
         'สถานะ': getPaymentStatus(b).label,
       }
     })
@@ -470,7 +496,7 @@ export default function Payments() {
   const clearFilters = () => {
     setSearch(''); setFilterDateFrom(getDefaultFrom()); setFilterDateTo(''); setFilterStatus(''); setFilterMethod('')
     setFilterBookedMin(''); setFilterBookedMax('')
-    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
+    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual(''); setFilterSlip('')
     fetchBookings(getDefaultFrom(), '')
   }
 
@@ -574,6 +600,15 @@ export default function Payments() {
               <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
                 placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">สลิป</label>
+              <select value={filterSlip} onChange={(e) => setFilterSlip(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">แนบสลิปแล้ว</option>
+                <option value="ไม่มี">ยังไม่แนบสลิป</option>
+              </select>
+            </div>
           </div>
           <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
@@ -581,11 +616,22 @@ export default function Payments() {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex justify-between items-center">
+            <span className="text-sm text-gray-600">📎 แนบสลิปแล้ว</span>
+            <span className="text-lg font-bold text-green-600">{filtered.filter(b => b._hasSlip).length} รายการ</span>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex justify-between items-center">
+            <span className="text-sm text-gray-600">⚠️ ยังไม่แนบสลิป</span>
+            <span className="text-lg font-bold text-amber-500">{filtered.filter(b => !b._hasSlip).length} รายการ</span>
+          </div>
+        </div>
+
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
             <span>แรงงาน</span><span>ราคา/คน</span><span>ยอดปกติ</span>
-            <span>พิเศษ/ข้าว/รวม</span><span>รับชำระจริง</span><span>สถานะ</span><span></span>
+            <span>พิเศษ/ข้าว/รวม</span><span>รับชำระจริง</span><span>สถานะ</span><span>สลิป</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -602,7 +648,7 @@ export default function Payments() {
             const mealAmt = getMealTotal(b)
             const grandTotal = getGrandTotal(b)
             return (
-              <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
+              <div key={b.id} className="grid grid-cols-11 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
                 <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                 <div>
                   <p className="font-medium text-gray-800 text-xs">{b.customers?.customer_name}</p>
@@ -651,6 +697,13 @@ export default function Payments() {
                   )}
                 </div>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
+                <span>
+                  {b._hasSlip ? (
+                    <span className="text-xs text-green-600 font-medium">📎 {b._slipCount}</span>
+                  ) : (
+                    <span className="text-xs text-amber-500 font-medium">⚠️ ยังไม่แนบ</span>
+                  )}
+                </span>
                 <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก</button>
               </div>
             )
