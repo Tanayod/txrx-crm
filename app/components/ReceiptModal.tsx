@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { numberToThaiBahtText } from '@/lib/thaiBahtText'
-import { IconX, IconPrinter, IconBan } from '@tabler/icons-react'
+import { IconX, IconPrinter, IconBan, IconUpload } from '@tabler/icons-react'
 
 type ReceiptItem = {
   description: string
@@ -43,10 +43,45 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   const [note, setNote] = useState(existingReceipt?.note ?? payment?.note ?? '')
   // วันที่ออกใบเสร็จ แก้เองได้ (เผื่อออกย้อนหลังหรือล่วงหน้า) ค่าเริ่มต้นเป็นวันนี้
   const [issueDate, setIssueDate] = useState(existingReceipt?.issue_date ?? new Date().toISOString().slice(0, 10))
-  // ชื่อ 3 ฝ่ายที่แสดงในช่องลายเซ็น แก้ได้ทั้งหมด
+
+  // ===== คลังลายเซ็น: เลือกจาก dropdown แทนพิมพ์ชื่อเฉยๆ เพื่อให้รูปลายเซ็นตรงกับชื่อเสมอ =====
+  const [signatures, setSignatures] = useState<any[]>([])
+  const [signaturesLoaded, setSignaturesLoaded] = useState(false)
+  const [issuerSignatureId, setIssuerSignatureId] = useState(existingReceipt?.issuer_signature_id ?? '')
+  const [approverSignatureId, setApproverSignatureId] = useState(existingReceipt?.approver_signature_id ?? '')
   const [issuerName, setIssuerName] = useState(existingReceipt?.issuer_name ?? companySettings?.contact_name ?? '')
   const [approverName, setApproverName] = useState(existingReceipt?.approver_name ?? companySettings?.contact_name ?? '')
   const [receiverName, setReceiverName] = useState(existingReceipt?.receiver_name ?? customerName ?? '')
+  const [addingFor, setAddingFor] = useState<'issuer' | 'approver' | null>(null)
+  const [newSigName, setNewSigName] = useState('')
+  const [newSigFile, setNewSigFile] = useState<File | null>(null)
+  const [savingSignature, setSavingSignature] = useState(false)
+
+  const fetchSignatures = async () => {
+    const { data } = await supabase.from('signatures').select('*').order('name', { ascending: true })
+    setSignatures(data || [])
+  }
+  if (!signaturesLoaded) { fetchSignatures(); setSignaturesLoaded(true) }
+
+  const handleAddSignature = async () => {
+    if (!newSigName || !newSigFile || !addingFor) return
+    setSavingSignature(true)
+    const safeName = newSigFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const fileName = `signature_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safeName}`
+    const { data, error } = await supabase.storage.from('certificates').upload(fileName, newSigFile)
+    if (!error && data) {
+      const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
+      const { data: inserted } = await supabase.from('signatures').insert([{ name: newSigName, image_url: urlData.publicUrl }]).select().single()
+      if (inserted) {
+        setSignatures(prev => [...prev, inserted].sort((a,b) => a.name.localeCompare(b.name)))
+        if (addingFor === 'issuer') { setIssuerSignatureId(inserted.id); setIssuerName(inserted.name) }
+        else { setApproverSignatureId(inserted.id); setApproverName(inserted.name) }
+      }
+    }
+    setNewSigName(''); setNewSigFile(null); setAddingFor(null)
+    setSavingSignature(false)
+  }
+
   // หัก ณ ที่จ่าย 3% — คิดจากค่าบริการตรวจก่อน VAT เท่านั้น (ไม่รวมค่าข้าว/ตรวจพิเศษ)
   const [useWht, setUseWht] = useState(existingReceipt ? (existingReceipt.wht_amount > 0) : (payment?.use_wht || false))
 
@@ -76,8 +111,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
         amount: specialTotal,
       })
     }
-    // ค่าข้าวไฟล์ทบิน (ถ้ามี) — เก็บอยู่บน booking โดยตรง (meal_price, meal_count, booked_count)
-    // สำคัญ: ไม่คิด VAT และไม่เป็นฐานหัก ณ ที่จ่าย
+    // ค่าข้าวไฟล์ทบิน (ถ้ามี) — ไม่คิด VAT และไม่เป็นฐานหัก ณ ที่จ่าย
     const mealTotal = (booking?.meal_price || 0) * (booking?.meal_count || 0) * (booking?.booked_count || 0)
     if (mealTotal > 0) {
       items.push({
@@ -98,7 +132,6 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   const subtotal = items.reduce((s, it) => s + (it.amount || 0), 0)
   const vatAmount = existingReceipt?.vat_amount ?? items.reduce((s, it) => it.vat === '7%' ? s + Math.round(it.amount * 0.07 * 100) / 100 : s, 0)
   const totalAmount = existingReceipt ? existingReceipt.total_amount : Math.round((subtotal + vatAmount) * 100) / 100
-  // ฐานหัก ณ ที่จ่าย = เฉพาะยอดตรวจสุขภาพก่อน VAT (item แรกเท่านั้น) เหมือนหน้าการเงิน/ใบวางบิล
   const whtBase = (payment?.worker_count || 0) * (payment?.price_per_worker || 0)
   const whtAmount = existingReceipt?.wht_amount ?? (useWht ? Math.round(whtBase * 0.03 * 100) / 100 : 0)
   const netPayable = Math.round((totalAmount - whtAmount) * 100) / 100
@@ -117,6 +150,8 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
     setSaving(true)
     const { data: receiptNoData } = await supabase.rpc('get_next_receipt_no')
     const receiptNo = receiptNoData as string
+    const issuerSig = signatures.find(s => s.id === issuerSignatureId)
+    const approverSig = signatures.find(s => s.id === approverSignatureId)
 
     const payload = {
       receipt_no: receiptNo,
@@ -131,7 +166,11 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
       },
       company_snapshot: { ...(companySettings || {}), contact_name: contactName, phone: contactPhone, email: contactEmail },
       issuer_name: issuerName,
+      issuer_signature_id: issuerSignatureId || null,
+      issuer_signature_url: issuerSig?.image_url || null,
       approver_name: approverName,
+      approver_signature_id: approverSignatureId || null,
+      approver_signature_url: approverSig?.image_url || null,
       receiver_name: receiverName,
       subtotal,
       vat_amount: vatAmount,
@@ -215,23 +254,93 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
               </div>
             </div>
 
-            {/* ชื่อ 3 ฝ่ายสำหรับช่องลายเซ็น */}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
-              <p className="text-xs font-semibold text-gray-600">ชื่อผู้เกี่ยวข้อง (แสดงในช่องลายเซ็นท้ายใบเสร็จ)</p>
+            {/* ===== คลังลายเซ็น: เลือกผู้ออก / ผู้อนุมัติ พร้อมรูปลายเซ็นจริง ===== */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-3">
+              <p className="text-xs font-semibold text-gray-600">ลายเซ็นผู้ออกเอกสาร / ผู้อนุมัติ (เลือกจากคลัง หรือเพิ่มใหม่)</p>
+
+              {/* ผู้ออกเอกสาร */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ผู้ออกเอกสาร (ผู้ขาย)</label>
-                <input value={issuerName} onChange={(e) => setIssuerName(e.target.value)} placeholder="ชื่อผู้ออกเอกสาร"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                <div className="flex gap-2">
+                  <select value={issuerSignatureId}
+                    onChange={(e) => {
+                      const sig = signatures.find(s => s.id === e.target.value)
+                      setIssuerSignatureId(e.target.value)
+                      if (sig) setIssuerName(sig.name)
+                    }}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">-- ไม่มีลายเซ็น (เซ็นสด) --</option>
+                    {signatures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setAddingFor(addingFor === 'issuer' ? null : 'issuer')}
+                    className="px-3 py-2 text-xs border border-[#185FA5] text-[#185FA5] rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                    + เพิ่มใหม่
+                  </button>
+                </div>
+                {!issuerSignatureId && (
+                  <input value={issuerName} onChange={(e) => setIssuerName(e.target.value)} placeholder="หรือพิมพ์ชื่อเฉยๆ (ไม่มีรูปลายเซ็น)"
+                    className="w-full mt-1.5 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                )}
+                {addingFor === 'issuer' && (
+                  <div className="mt-2 p-2.5 bg-white border border-blue-200 rounded-lg space-y-2">
+                    <input value={newSigName} onChange={(e) => setNewSigName(e.target.value)} placeholder="ชื่อเจ้าของลายเซ็น"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+                    <label className="flex items-center gap-2 px-2.5 py-1.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-xs text-gray-500">
+                      <IconUpload size={13}/>{newSigFile ? newSigFile.name : 'เลือกไฟล์รูปลายเซ็น (.png/.jpg)'}
+                      <input type="file" accept=".png,.jpg,.jpeg" onChange={(e) => setNewSigFile(e.target.files?.[0] || null)} className="hidden"/>
+                    </label>
+                    <button type="button" onClick={handleAddSignature} disabled={savingSignature || !newSigName || !newSigFile}
+                      className="w-full py-1.5 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50">
+                      {savingSignature ? 'กำลังบันทึก...' : 'บันทึกลายเซ็นนี้เข้าคลัง'}
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* ผู้อนุมัติเอกสาร */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ผู้อนุมัติเอกสาร (ผู้ขาย)</label>
-                <input value={approverName} onChange={(e) => setApproverName(e.target.value)} placeholder="ชื่อผู้อนุมัติ"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                <div className="flex gap-2">
+                  <select value={approverSignatureId}
+                    onChange={(e) => {
+                      const sig = signatures.find(s => s.id === e.target.value)
+                      setApproverSignatureId(e.target.value)
+                      if (sig) setApproverName(sig.name)
+                    }}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">-- ไม่มีลายเซ็น (เซ็นสด) --</option>
+                    {signatures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setAddingFor(addingFor === 'approver' ? null : 'approver')}
+                    className="px-3 py-2 text-xs border border-[#185FA5] text-[#185FA5] rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                    + เพิ่มใหม่
+                  </button>
+                </div>
+                {!approverSignatureId && (
+                  <input value={approverName} onChange={(e) => setApproverName(e.target.value)} placeholder="หรือพิมพ์ชื่อเฉยๆ (ไม่มีรูปลายเซ็น)"
+                    className="w-full mt-1.5 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                )}
+                {addingFor === 'approver' && (
+                  <div className="mt-2 p-2.5 bg-white border border-blue-200 rounded-lg space-y-2">
+                    <input value={newSigName} onChange={(e) => setNewSigName(e.target.value)} placeholder="ชื่อเจ้าของลายเซ็น"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+                    <label className="flex items-center gap-2 px-2.5 py-1.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-xs text-gray-500">
+                      <IconUpload size={13}/>{newSigFile ? newSigFile.name : 'เลือกไฟล์รูปลายเซ็น (.png/.jpg)'}
+                      <input type="file" accept=".png,.jpg,.jpeg" onChange={(e) => setNewSigFile(e.target.files?.[0] || null)} className="hidden"/>
+                    </label>
+                    <button type="button" onClick={handleAddSignature} disabled={savingSignature || !newSigName || !newSigFile}
+                      className="w-full py-1.5 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50">
+                      {savingSignature ? 'กำลังบันทึก...' : 'บันทึกลายเซ็นนี้เข้าคลัง'}
+                    </button>
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ผู้รับเอกสาร (ลูกค้า)</label>
                 <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} placeholder="ชื่อผู้รับเอกสารฝั่งลูกค้า"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                <p className="text-xs text-gray-400 mt-1">ฝั่งลูกค้าจะเป็นเส้นว่างให้เซ็นสดเสมอ (ไม่มีคลังลายเซ็นลูกค้า)</p>
               </div>
             </div>
 
@@ -385,13 +494,21 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
       {/* ช่องลายเซ็น: ผู้ออกเอกสาร / ผู้อนุมัติเอกสาร / ผู้รับเอกสาร */}
       <div className="grid grid-cols-3 gap-6 mt-10 text-xs text-center">
         <div>
-          <div className="border-b border-gray-400 h-12"></div>
+          {r.issuer_signature_url ? (
+            <img src={r.issuer_signature_url} alt="ลายเซ็นผู้ออกเอกสาร" className="h-14 mx-auto object-contain"/>
+          ) : (
+            <div className="border-b border-gray-400 h-12"></div>
+          )}
           <p className="mt-1 font-medium text-gray-700">{r.issuer_name || compSnap.contact_name || '-'}</p>
           <p className="text-gray-400">ผู้ออกเอกสาร (ผู้ขาย)</p>
           <p className="text-gray-400">{r.issue_date}</p>
         </div>
         <div>
-          <div className="border-b border-gray-400 h-12"></div>
+          {r.approver_signature_url ? (
+            <img src={r.approver_signature_url} alt="ลายเซ็นผู้อนุมัติ" className="h-14 mx-auto object-contain"/>
+          ) : (
+            <div className="border-b border-gray-400 h-12"></div>
+          )}
           <p className="mt-1 font-medium text-gray-700">{r.approver_name || compSnap.contact_name || '-'}</p>
           <p className="text-gray-400">ผู้อนุมัติเอกสาร (ผู้ขาย)</p>
           <p className="text-gray-400">{r.issue_date}</p>
