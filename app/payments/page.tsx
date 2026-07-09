@@ -22,6 +22,7 @@ export default function Payments() {
   const [showModal, setShowModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [form, setForm] = useState({
     amount_received: 0, amountTouched: false, method: 'transfer',
@@ -190,6 +191,9 @@ export default function Payments() {
   const creditDeposited = (excess > 0 && form.keep_excess_credit) ? excess : 0
 
   const handleSave = async () => {
+    // กันกดปุ่มซ้ำ (double-click) ซึ่งเคยทำให้เกิด payment ซ้ำ 2 แถวสำหรับจองเดียวกัน
+    if (savingPayment) return
+    setSavingPayment(true)
     const p = selected?.payments?.[0]
     const payload = {
       amount_received: actualReceived,
@@ -244,6 +248,7 @@ export default function Payments() {
 
     if (paymentId) fetchSlips(paymentId)
     fetchBookings()
+    setSavingPayment(false)
   }
 
   // อัพโหลดได้ทีละหลายไฟล์ ถ้ายังไม่มี payment ให้สร้างก่อนแบบเงียบๆ
@@ -874,8 +879,8 @@ export default function Payments() {
                   placeholder="หมายเหตุเพิ่มเติม..."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
-              <button onClick={handleSave} className="w-full bg-[#185FA5] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#0C447C] transition-colors">
-                บันทึกการชำระเงิน
+              <button onClick={handleSave} disabled={savingPayment} className="w-full bg-[#185FA5] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#0C447C] disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {savingPayment ? 'กำลังบันทึก...' : 'บันทึกการชำระเงิน'}
               </button>
               <div className="border-t border-gray-100 pt-4">
                 <p className="text-xs font-medium text-gray-600 mb-2">แนบสลิป ({slips.length} ไฟล์)</p>
