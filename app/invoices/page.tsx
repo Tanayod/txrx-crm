@@ -129,15 +129,31 @@ export default function Invoices() {
   const handleSyncToPayments = async () => {
     if (!selected) return
     setSavingVat(true)
-    const p = getP(selected)
+    // สำคัญ: เช็คจากฐานข้อมูลจริง "สดๆ" ทุกครั้ง แทนที่จะเชื่อ selected.payments ที่อาจเป็นข้อมูลค้าง
+    // (ค้างได้ง่ายมากถ้าเปิด modal นี้ทิ้งไว้แล้วกดบันทึกซ้ำหลายรอบ — เคยทำให้เกิด payment ซ้ำมาแล้ว)
+    const { data: existing } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('booking_id', selected.id)
+      .maybeSingle()
     const payload = {
       worker_count: actualCount, price_per_worker: pricePerHead,
       use_vat: useVat, vat_mode: vatMode, use_wht: useWht, wht_amount: whtAmount,
       total_amount: total,
       invoice_no: getInvoiceNo(selected),
     }
-    if (p?.id) await supabase.from('payments').update(payload).eq('id', p.id)
-    else await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id, payment_status: 'ยังไม่ชำระ' }])
+    let paymentRow
+    if (existing?.id) {
+      const { data } = await supabase.from('payments').update(payload).eq('id', existing.id).select().single()
+      paymentRow = data
+    } else {
+      const { data } = await supabase.from('payments')
+        .insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id, payment_status: 'ยังไม่ชำระ' }])
+        .select().single()
+      paymentRow = data
+    }
+    // อัปเดต state ของ selected ให้ตรงกับฐานข้อมูลทันที กันไม่ให้กดซ้ำแล้ว insert อีกรอบ
+    if (paymentRow) setSelected((prev: any) => prev ? { ...prev, payments: [paymentRow] } : prev)
     // บันทึก quotation_no ถ้าเปิดจากใบเสนอราคา
     if (showQuotation) await supabase.from('bookings').update({ quotation_no: quotationNo }).eq('id', selected.id)
     setSavingVat(false)
