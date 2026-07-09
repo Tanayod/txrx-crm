@@ -157,7 +157,8 @@ export default function Bookings() {
 
   // ลบ booking ต้องลบข้อมูลที่ผูกอยู่ทุกตารางก่อน ไม่งั้นจะชน FK constraint
   // ลำดับสำคัญ: receipts ผูกกับทั้ง payment_id และ booking_id โดยตรง ต้องลบ "ก่อน" payment_slips และ payments เสมอ
-  // รายการตารางที่ผูกกับ booking_id ทั้งหมด ณ ปัจจุบัน: medical_cases, payments, special_exams, sim_items, receipts, payment_slips (ผูกผ่าน payments)
+  // certificates ผูกกับ medical_cases ผ่าน case_id ต้องลบ "ก่อน" medical_cases เสมอ
+  // รายการตารางที่ผูกกับ booking_id ทั้งหมด ณ ปัจจุบัน: medical_cases (+certificates ผ่าน case_id), payments (+receipts, payment_slips), special_exams, sim_items
   const handleDelete = async () => {
     if (!deleteId) return
     setDeleting(true)
@@ -177,6 +178,12 @@ export default function Bookings() {
       if (paymentIds.length > 0) {
         const { error: slipErr } = await supabase.from('payment_slips').delete().in('payment_id', paymentIds)
         if (slipErr) throw slipErr
+      }
+      const { data: mcRows } = await supabase.from('medical_cases').select('id').eq('booking_id', deleteId)
+      const mcIds = (mcRows || []).map((m: any) => m.id)
+      if (mcIds.length > 0) {
+        const { error: certErr } = await supabase.from('certificates').delete().in('case_id', mcIds)
+        if (certErr) throw certErr
       }
       const { error: mcErr } = await supabase.from('medical_cases').delete().eq('booking_id', deleteId)
       if (mcErr) throw mcErr
