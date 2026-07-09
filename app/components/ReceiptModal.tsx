@@ -43,8 +43,12 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   const [note, setNote] = useState(existingReceipt?.note ?? payment?.note ?? '')
   // วันที่ออกใบเสร็จ แก้เองได้ (เผื่อออกย้อนหลังหรือล่วงหน้า) ค่าเริ่มต้นเป็นวันนี้
   const [issueDate, setIssueDate] = useState(existingReceipt?.issue_date ?? new Date().toISOString().slice(0, 10))
-  // ชื่อผู้อนุมัติเอกสาร (แสดงในช่องลายเซ็น) แก้ได้ ค่าเริ่มต้นใช้ชื่อผู้ติดต่อเดียวกับผู้ออกเอกสาร
+  // ชื่อ 3 ฝ่ายที่แสดงในช่องลายเซ็น แก้ได้ทั้งหมด
+  const [issuerName, setIssuerName] = useState(existingReceipt?.issuer_name ?? companySettings?.contact_name ?? '')
   const [approverName, setApproverName] = useState(existingReceipt?.approver_name ?? companySettings?.contact_name ?? '')
+  const [receiverName, setReceiverName] = useState(existingReceipt?.receiver_name ?? customerName ?? '')
+  // หัก ณ ที่จ่าย 3% — คิดจากค่าบริการตรวจก่อน VAT เท่านั้น (ไม่รวมค่าข้าว/ตรวจพิเศษ)
+  const [useWht, setUseWht] = useState(existingReceipt ? (existingReceipt.wht_amount > 0) : (payment?.use_wht || false))
 
   const buildDefaultItems = (): ReceiptItem[] => {
     const items: ReceiptItem[] = []
@@ -73,6 +77,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
       })
     }
     // ค่าข้าวไฟล์ทบิน (ถ้ามี) — เก็บอยู่บน booking โดยตรง (meal_price, meal_count, booked_count)
+    // สำคัญ: ไม่คิด VAT และไม่เป็นฐานหัก ณ ที่จ่าย
     const mealTotal = (booking?.meal_price || 0) * (booking?.meal_count || 0) * (booking?.booked_count || 0)
     if (mealTotal > 0) {
       items.push({
@@ -93,7 +98,11 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   const subtotal = items.reduce((s, it) => s + (it.amount || 0), 0)
   const vatAmount = existingReceipt?.vat_amount ?? items.reduce((s, it) => it.vat === '7%' ? s + Math.round(it.amount * 0.07 * 100) / 100 : s, 0)
   const totalAmount = existingReceipt ? existingReceipt.total_amount : Math.round((subtotal + vatAmount) * 100) / 100
-  const amountPaid = existingReceipt?.amount_paid ?? payment?.amount_received ?? totalAmount
+  // ฐานหัก ณ ที่จ่าย = เฉพาะยอดตรวจสุขภาพก่อน VAT (item แรกเท่านั้น) เหมือนหน้าการเงิน/ใบวางบิล
+  const whtBase = (payment?.worker_count || 0) * (payment?.price_per_worker || 0)
+  const whtAmount = existingReceipt?.wht_amount ?? (useWht ? Math.round(whtBase * 0.03 * 100) / 100 : 0)
+  const netPayable = Math.round((totalAmount - whtAmount) * 100) / 100
+  const amountPaid = existingReceipt?.amount_paid ?? payment?.amount_received ?? netPayable
 
   const updateItem = (i: number, field: keyof ReceiptItem, value: any) => {
     const updated = [...items]
@@ -121,9 +130,12 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
         name: customerName, address: customerAddress, tax_id: customerTaxId,
       },
       company_snapshot: { ...(companySettings || {}), contact_name: contactName, phone: contactPhone, email: contactEmail },
+      issuer_name: issuerName,
       approver_name: approverName,
+      receiver_name: receiverName,
       subtotal,
       vat_amount: vatAmount,
+      wht_amount: whtAmount,
       total_amount: totalAmount,
       amount_paid: amountPaid,
       payment_method: payment?.method || '',
@@ -164,7 +176,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
           <div className="p-5 space-y-3">
             <p className="text-xs text-gray-400">เลขที่เอกสารจะรันอัตโนมัติตอนกดยืนยัน (แก้ไขเองไม่ได้)</p>
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อลูกค้า</label>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อลูกค้า (แสดงบนใบเสร็จ)</label>
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
@@ -202,11 +214,31 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
             </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">ผู้อนุมัติเอกสาร (แสดงในช่องลายเซ็น)</label>
-              <input value={approverName} onChange={(e) => setApproverName(e.target.value)} placeholder="ชื่อผู้อนุมัติ"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+
+            {/* ชื่อ 3 ฝ่ายสำหรับช่องลายเซ็น */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+              <p className="text-xs font-semibold text-gray-600">ชื่อผู้เกี่ยวข้อง (แสดงในช่องลายเซ็นท้ายใบเสร็จ)</p>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">ผู้ออกเอกสาร (ผู้ขาย)</label>
+                <input value={issuerName} onChange={(e) => setIssuerName(e.target.value)} placeholder="ชื่อผู้ออกเอกสาร"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">ผู้อนุมัติเอกสาร (ผู้ขาย)</label>
+                <input value={approverName} onChange={(e) => setApproverName(e.target.value)} placeholder="ชื่อผู้อนุมัติ"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">ผู้รับเอกสาร (ลูกค้า)</label>
+                <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} placeholder="ชื่อผู้รับเอกสารฝั่งลูกค้า"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer bg-rose-50 border border-rose-100 rounded-lg p-3">
+              <input type="checkbox" checked={useWht} onChange={(e) => setUseWht(e.target.checked)} className="rounded border-gray-300"/>
+              <span className="text-xs font-medium text-rose-700">หัก ณ ที่จ่าย 3% (คำนวณจากค่าตรวจก่อน VAT ฿{whtBase.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})})</span>
+            </label>
 
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs font-semibold text-gray-600 mb-2">รายการ</p>
@@ -227,9 +259,23 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
               <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
-            <div className="bg-blue-50 rounded-lg p-3 flex justify-between items-center">
-              <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งสิ้น</span>
-              <span className="text-lg font-bold text-[#185FA5]">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            <div className="bg-blue-50 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งสิ้น</span>
+                <span className="text-lg font-bold text-[#185FA5]">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              </div>
+              {whtAmount > 0 && (
+                <>
+                  <div className="flex justify-between items-center text-xs text-rose-600">
+                    <span>หัก ณ ที่จ่าย 3%</span>
+                    <span>- ฿{whtAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-blue-100 pt-1">
+                    <span className="text-sm font-semibold text-gray-700">ยอดรับชำระสุทธิ</span>
+                    <span className="text-base font-bold text-emerald-600">฿{netPayable.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="p-4 border-t border-gray-100 flex justify-end gap-2">
@@ -249,6 +295,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   if (!r) return null
   const custSnap = r.customer_snapshot || {}
   const compSnap = r.company_snapshot || companySettings || {}
+  const rNetPayable = Math.round(((r.total_amount || 0) - (r.wht_amount || 0)) * 100) / 100
 
   const ReceiptCopy = ({ label }: { label: string }) => (
     <div className="bg-white p-8 text-sm text-gray-800" style={{ pageBreakAfter: 'always', minHeight: '29.7cm', boxSizing: 'border-box' }}>
@@ -294,7 +341,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
             <th className="text-right p-2">จำนวน</th>
             <th className="text-right p-2">ราคา</th>
             <th className="text-right p-2">VAT</th>
-            <th className="text-right p-2 rounded-r-md">มูลค่ากภาษี</th>
+            <th className="text-right p-2 rounded-r-md">มูลค่า</th>
           </tr>
         </thead>
         <tbody>
@@ -317,7 +364,13 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
           <div className="flex justify-between"><span className="text-gray-500">มูลค่าก่อนภาษี</span><span>{r.subtotal?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} บาท</span></div>
           {r.vat_amount > 0 && <div className="flex justify-between"><span className="text-gray-500">ภาษีมูลค่าเพิ่ม 7%</span><span>{r.vat_amount?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} บาท</span></div>}
           <div className="flex justify-between border-t border-gray-200 pt-1 font-bold text-sm"><span>จำนวนเงินทั้งสิ้น</span><span>{r.total_amount?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} บาท</span></div>
-          <p className="text-right text-gray-400 italic">({numberToThaiBahtText(r.total_amount)})</p>
+          {r.wht_amount > 0 && (
+            <>
+              <div className="flex justify-between text-rose-600"><span>หัก ณ ที่จ่าย 3%</span><span>-{r.wht_amount?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} บาท</span></div>
+              <div className="flex justify-between border-t border-gray-200 pt-1 font-bold text-sm"><span>ยอดรับชำระสุทธิ</span><span>{rNetPayable.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} บาท</span></div>
+            </>
+          )}
+          <p className="text-right text-gray-400 italic">({numberToThaiBahtText(r.wht_amount > 0 ? rNetPayable : r.total_amount)})</p>
         </div>
       </div>
       <div className="border-t border-gray-200 pt-3 mb-6 text-xs">
@@ -333,7 +386,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
       <div className="grid grid-cols-3 gap-6 mt-10 text-xs text-center">
         <div>
           <div className="border-b border-gray-400 h-12"></div>
-          <p className="mt-1 font-medium text-gray-700">{compSnap.contact_name || '-'}</p>
+          <p className="mt-1 font-medium text-gray-700">{r.issuer_name || compSnap.contact_name || '-'}</p>
           <p className="text-gray-400">ผู้ออกเอกสาร (ผู้ขาย)</p>
           <p className="text-gray-400">{r.issue_date}</p>
         </div>
@@ -345,8 +398,8 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
         </div>
         <div>
           <div className="border-b border-gray-400 h-12"></div>
-          <p className="mt-1 font-medium text-gray-700">&nbsp;</p>
-          <p className="text-gray-400">ผู้รับเอกสาร ({custSnap.name})</p>
+          <p className="mt-1 font-medium text-gray-700">{r.receiver_name || custSnap.name || '-'}</p>
+          <p className="text-gray-400">ผู้รับเอกสาร (ลูกค้า)</p>
           <p className="text-gray-400">&nbsp;</p>
         </div>
       </div>

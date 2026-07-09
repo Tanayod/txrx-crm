@@ -29,6 +29,7 @@ export default function Payments() {
     worker_count: 0, price_per_worker: 0,
     ref_no: '', note: '', bank_account_id: '',
     use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
+    use_wht: false, // หัก ณ ที่จ่าย 3%
     credit_used: 0, credit_toggle: false, keep_excess_credit: true,
   })
 
@@ -103,6 +104,7 @@ export default function Payments() {
   }
 
   // ค่าข้าวไฟล์ทบิน = ราคา/มื้อ x จำนวนมื้อ x จำนวนคนที่จอง (เก็บอยู่บนตาราง bookings โดยตรง)
+  // สำคัญ: ค่าข้าวนี้ไม่คิด VAT และไม่เป็นฐานคำนวณหัก ณ ที่จ่าย เด็ดขาด — คำนวณแยกจากยอดตรวจเสมอ
   const getMealTotal = (b: any) => {
     return (b.meal_price || 0) * (b.meal_count || 0) * (b.booked_count || 0)
   }
@@ -118,7 +120,7 @@ export default function Payments() {
     const p = b.payments?.[0]
     const normalWithVat = getNormalTotalWithVat(p)
     const specialTotal = getSpecialTotal(b)
-    const mealTotal = getMealTotal(b)
+    const mealTotal = getMealTotal(b) // ไม่ผ่าน VAT
     return Math.round((normalWithVat + specialTotal + mealTotal) * 100) / 100
   }
 
@@ -145,6 +147,7 @@ export default function Payments() {
       bank_account_id: p?.bank_account_id || '',
       use_vat: p?.use_vat || false,
       vat_mode: p?.vat_mode || 'exclusive',
+      use_wht: p?.use_wht || false,
       credit_used: p?.credit_used || 0,
       credit_toggle: (p?.credit_used || 0) > 0,
       keep_excess_credit: true,
@@ -158,7 +161,7 @@ export default function Payments() {
   const normalTotal = form.worker_count * form.price_per_worker
   const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
   const mealAmountSelected = selected ? getMealTotal(selected) : 0
-  // VAT คิดจากยอดตรวจสุขภาพปกติ (normalTotal) เท่านั้น
+  // VAT คิดจากยอดตรวจสุขภาพปกติ (normalTotal) เท่านั้น — ค่าข้าวและตรวจพิเศษไม่รวมในฐาน VAT
   const vatBase = form.use_vat
     ? (form.vat_mode === 'inclusive' ? normalTotal / 1.07 : normalTotal)
     : normalTotal
@@ -170,6 +173,9 @@ export default function Payments() {
     : normalTotal
   const grandTotalSelected = normalTotalWithVat + specialAmountSelected + mealAmountSelected
 
+  // หัก ณ ที่จ่าย 3% — คิดจากฐานเดียวกับ VAT (ยอดตรวจก่อน VAT) เท่านั้น ไม่รวมค่าข้าว/ตรวจพิเศษ
+  const whtAmount = form.use_wht ? Math.round(vatBase * 0.03 * 100) / 100 : 0
+
   // ===== ยอดเครดิตสะสม (จากการโอนเกินครั้งก่อน) =====
   const selectedPayment = selected?.payments?.[0]
   const prevCreditUsed = selectedPayment?.credit_used || 0
@@ -178,7 +184,7 @@ export default function Payments() {
   // ยอดสูงสุดที่หักได้ = เครดิตที่เหลือ + เครดิตที่ payment นี้เคยหักไปแล้ว (เผื่อแก้ไขซ้ำ) แต่ไม่เกินยอดที่ต้องจ่าย
   const maxUsableCredit = Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
   const creditUsed = form.credit_toggle ? Math.min(form.credit_used || 0, maxUsableCredit) : 0
-  const netDue = Math.max(Math.round((grandTotalSelected - creditUsed) * 100) / 100, 0)
+  const netDue = Math.max(Math.round((grandTotalSelected - creditUsed - whtAmount) * 100) / 100, 0)
   const actualReceived = form.amountTouched ? form.amount_received : netDue
   const excess = form.amountTouched ? Math.max(Math.round((actualReceived - netDue) * 100) / 100, 0) : 0
   const creditDeposited = (excess > 0 && form.keep_excess_credit) ? excess : 0
@@ -198,6 +204,8 @@ export default function Payments() {
       bank_account_id: form.method === 'transfer' ? (form.bank_account_id || null) : null,
       use_vat: form.use_vat,
       vat_mode: form.vat_mode,
+      use_wht: form.use_wht,
+      wht_amount: whtAmount,
       credit_used: creditUsed,
       credit_deposited: creditDeposited,
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
@@ -434,6 +442,7 @@ export default function Payments() {
         'ยอดตรวจพิเศษ': specialAmt,
         'ค่าข้าวไฟล์ทบิน': mealAmt,
         'ยอดรวม': grandTotal,
+        'หัก ณ ที่จ่าย 3%': p?.wht_amount || 0,
         'ยอดรับ': p?.amount_received || 0,
         'วิธีชำระ': p?.method || '',
         'บัญชีธนาคาร': p?.bank_accounts ? getBankAccountLabel(p.bank_accounts) : '',
@@ -612,6 +621,7 @@ export default function Payments() {
                   )}
                   {specialAmt === 0 && mealAmt === 0 && <span className="text-xs text-gray-300">-</span>}
                   {p?.use_vat && <span className="text-xs text-sky-500 mt-0.5 block">รวม VAT</span>}
+                  {p?.use_wht && <span className="text-xs text-rose-500 mt-0.5 block">หัก ณ ที่จ่าย 3%</span>}
                   {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>}
                 </div>
                 <div>
@@ -626,6 +636,9 @@ export default function Payments() {
                   )}
                   {p?.credit_deposited > 0 && (
                     <p className="text-xs text-sky-500 mt-0.5">เก็บเป็นเครดิต ฿{p.credit_deposited.toLocaleString()}</p>
+                  )}
+                  {p?.wht_amount > 0 && (
+                    <p className="text-xs text-rose-500 mt-0.5">หัก ณ ที่จ่าย ฿{p.wht_amount.toLocaleString()}</p>
                   )}
                 </div>
                 <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
@@ -709,7 +722,7 @@ export default function Payments() {
                     <span className="text-xs font-medium text-gray-700">คิด VAT 7% (เฉพาะยอดตรวจปกติ)</span>
                   </label>
                   {form.use_vat && (
-                    <div className="flex gap-3 pl-6">
+                    <div className="flex gap-3 pl-6 mb-2">
                       <label className="flex items-center gap-1.5 cursor-pointer">
                         <input type="radio" checked={form.vat_mode === 'exclusive'}
                           onChange={() => setForm({...form, vat_mode: 'exclusive'})}
@@ -724,6 +737,12 @@ export default function Payments() {
                       </label>
                     </div>
                   )}
+                  <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-gray-100">
+                    <input type="checkbox" checked={form.use_wht}
+                      onChange={(e) => setForm({...form, use_wht: e.target.checked})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs font-medium text-gray-700">หัก ณ ที่จ่าย 3% (คิดจากยอดตรวจก่อน VAT เท่านั้น)</span>
+                  </label>
                 </div>
                 <div className="space-y-1.5 bg-white rounded-lg p-3 border border-blue-200">
                   <div className="flex justify-between text-xs text-gray-500">
@@ -744,7 +763,7 @@ export default function Payments() {
                   )}
                   {mealAmountSelected > 0 && (
                     <div className="flex justify-between text-xs text-sky-600">
-                      <span>✈️ ค่าข้าวไฟล์ทบิน ({selected.meal_price}×{selected.meal_count}มื้อ×{selected.booked_count}คน)</span>
+                      <span>✈️ ค่าข้าวไฟล์ทบิน ({selected.meal_price}×{selected.meal_count}มื้อ×{selected.booked_count}คน) — ไม่รวม VAT</span>
                       <span className="font-medium">฿{mealAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}
@@ -753,16 +772,22 @@ export default function Payments() {
                     <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   {creditUsed > 0 && (
-                    <>
-                      <div className="flex justify-between text-xs text-emerald-600">
-                        <span>หักเครดิตสะสม</span>
-                        <span className="font-medium">- ฿{creditUsed.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                      </div>
-                      <div className="flex justify-between border-t border-gray-100 pt-1.5">
-                        <span className="text-sm font-semibold text-gray-700">ยอดที่ต้องชำระจริง</span>
-                        <span className="text-lg font-bold text-emerald-600">฿{netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                      </div>
-                    </>
+                    <div className="flex justify-between text-xs text-emerald-600">
+                      <span>หักเครดิตสะสม</span>
+                      <span className="font-medium">- ฿{creditUsed.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {whtAmount > 0 && (
+                    <div className="flex justify-between text-xs text-rose-600">
+                      <span>หัก ณ ที่จ่าย 3% (จาก ฿{vatBase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})</span>
+                      <span className="font-medium">- ฿{whtAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {(creditUsed > 0 || whtAmount > 0) && (
+                    <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                      <span className="text-sm font-semibold text-gray-700">ยอดที่ต้องชำระจริง</span>
+                      <span className="text-lg font-bold text-emerald-600">฿{netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
                   )}
                 </div>
               </div>

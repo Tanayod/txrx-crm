@@ -32,6 +32,7 @@ export default function Invoices() {
   const [pricePerHead, setPricePerHead] = useState(0)
   const [useVat, setUseVat] = useState(false)
   const [vatMode, setVatMode] = useState('exclusive')
+  const [useWht, setUseWht] = useState(false)
   const [billingAddress, setBillingAddress] = useState('')
   const [customerTaxId, setCustomerTaxId] = useState('')
   const [printName, setPrintName] = useState('')
@@ -100,6 +101,7 @@ export default function Invoices() {
     else { const total = p?.amount_received || 0; setPricePerHead(count > 0 ? Math.round((total / count) * 100) / 100 : 0) }
     setUseVat(p?.use_vat || false)
     setVatMode(p?.vat_mode || 'exclusive')
+    setUseWht(p?.use_wht || false)
     setBillingAddress('')
     setCustomerTaxId('')
     setPrintName(booking.customers?.customer_name || '')
@@ -115,6 +117,7 @@ export default function Invoices() {
     else setPricePerHead(0)
     setUseVat(false)
     setVatMode('exclusive')
+    setUseWht(false)
     setBillingAddress(booking.customers?.address || '')
     setCustomerTaxId('')
     setPrintName(booking.customers?.customer_name || '')
@@ -129,7 +132,8 @@ export default function Invoices() {
     const p = getP(selected)
     const payload = {
       worker_count: actualCount, price_per_worker: pricePerHead,
-      use_vat: useVat, vat_mode: vatMode, total_amount: total,
+      use_vat: useVat, vat_mode: vatMode, use_wht: useWht, wht_amount: whtAmount,
+      total_amount: total,
       invoice_no: getInvoiceNo(selected),
     }
     if (p?.id) await supabase.from('payments').update(payload).eq('id', p.id)
@@ -158,11 +162,13 @@ export default function Invoices() {
   const rawTotal = actualCount * pricePerHead
   const subtotal = useVat && vatMode === 'inclusive' ? Math.round((rawTotal / 1.07) * 100) / 100 : rawTotal
   const vatAmount = useVat ? (vatMode === 'inclusive' ? Math.round((rawTotal - subtotal) * 100) / 100 : Math.round(subtotal * 0.07 * 100) / 100) : 0
-  // ค่าข้าวไฟล์ทบิน — เก็บอยู่บน booking โดยตรง ไม่คิด VAT
+  // ค่าข้าวไฟล์ทบิน — เก็บอยู่บน booking โดยตรง ไม่คิด VAT และไม่เป็นฐานหัก ณ ที่จ่าย
   const mealTotal = selected ? (selected.meal_price || 0) * (selected.meal_count || 0) * (selected.booked_count || 0) : 0
+  // หัก ณ ที่จ่าย 3% คิดจาก subtotal (ค่าตรวจก่อน VAT) เท่านั้น เหมือนฐาน VAT
+  const whtAmount = useWht ? Math.round(subtotal * 0.03 * 100) / 100 : 0
   const total = (useVat && vatMode === 'inclusive' ? rawTotal : Math.round((subtotal + vatAmount) * 100) / 100) + mealTotal
   const paid = p?.amount_received || 0
-  const remaining = Math.round((total - paid) * 100) / 100
+  const remaining = Math.round((total - paid - whtAmount) * 100) / 100
 
   const thaiDateStr = (date?: string) => {
     const d = date ? new Date(date) : new Date()
@@ -317,15 +323,22 @@ export default function Invoices() {
                       <input type="checkbox" checked={useVat} onChange={(e) => setUseVat(e.target.checked)} className="rounded"/>
                       <span className="text-xs font-medium text-gray-700">คิด VAT 7% (เฉพาะยอดตรวจ)</span>
                     </label>
-                    {useVat && <div className="flex gap-3 pl-6">
+                    {useVat && <div className="flex gap-3 pl-6 mb-2">
                       <label className="flex items-center gap-1.5 cursor-pointer"><input type="radio" checked={vatMode === 'exclusive'} onChange={() => setVatMode('exclusive')}/><span className="text-xs text-gray-600">ราคา + VAT</span></label>
                       <label className="flex items-center gap-1.5 cursor-pointer"><input type="radio" checked={vatMode === 'inclusive'} onChange={() => setVatMode('inclusive')}/><span className="text-xs text-gray-600">ราคารวม VAT</span></label>
                     </div>}
+                    <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-gray-100">
+                      <input type="checkbox" checked={useWht} onChange={(e) => setUseWht(e.target.checked)} className="rounded"/>
+                      <span className="text-xs font-medium text-gray-700">หัก ณ ที่จ่าย 3% (จากยอดตรวจก่อน VAT)</span>
+                    </label>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600"><span>ยอดก่อน VAT (ค่าตรวจ)</span><span>฿{fmt(subtotal)}</span></div>
                   <div className="flex justify-between text-sm"><span className={useVat ? 'text-gray-600' : 'text-gray-300'}>VAT 7%</span><span className={useVat ? 'text-gray-600' : 'text-gray-300'}>฿{fmt(vatAmount)}</span></div>
                   {mealTotal > 0 && (
-                    <div className="flex justify-between text-sm text-sky-600"><span>✈️ ค่าข้าวไฟล์ทบิน</span><span>฿{fmt(mealTotal)}</span></div>
+                    <div className="flex justify-between text-sm text-sky-600"><span>✈️ ค่าข้าวไฟล์ทบิน (ไม่รวม VAT)</span><span>฿{fmt(mealTotal)}</span></div>
+                  )}
+                  {whtAmount > 0 && (
+                    <div className="flex justify-between text-sm text-rose-600"><span>หัก ณ ที่จ่าย 3%</span><span>- ฿{fmt(whtAmount)}</span></div>
                   )}
                   <div className="flex justify-between text-sm text-gray-600 border-t border-gray-100 pt-2"><span>ยอดรับชำระแล้ว</span><span className="text-green-600">฿{fmt(paid)}</span></div>
                   <div className="flex justify-between font-bold text-base border-t-2 border-[#185FA5] pt-2"><span>ยอดคงค้าง</span><span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{fmt(remaining)}</span></div>
@@ -478,13 +491,15 @@ export default function Invoices() {
                   <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
                     <p className="text-xs font-semibold text-gray-600 mb-2">สรุป</p>
                     <div className="flex justify-between text-xs text-gray-600 mb-1"><span>มูลค่าไม่มีหรือยกเว้นภาษี</span><span>{fmt(subtotal + mealTotal)} บาท</span></div>
-                    <div className="flex justify-between text-xs text-gray-600 mb-1"><span>หักพันห้าร้อยบาทถ้วน</span><span></span></div>
+                    {whtAmount > 0 && (
+                      <div className="flex justify-between text-xs text-rose-600 mb-1"><span>หัก ณ ที่จ่าย 3%</span><span>-{fmt(whtAmount)} บาท</span></div>
+                    )}
                   </div>
                 </div>
                 <div className="w-80">
                   <div className="flex justify-between mb-1"><span className="text-sm font-bold text-gray-700">จำนวนเงินทั้งสิ้น</span><span className="text-lg font-bold text-[#185FA5]">{fmt(total)} บาท</span></div>
-                  <div className="flex justify-between text-sm text-gray-600 mb-1"><span>จำนวนเงินที่ถูกหัก ณ ที่จ่าย</span><span>0.00 บาท</span></div>
-                  <div className="flex justify-between text-sm font-semibold text-gray-700 border-t border-gray-200 pt-1"><span>จำนวนเงินที่ชำระ</span><span>{fmt(total)} บาท</span></div>
+                  <div className="flex justify-between text-sm text-gray-600 mb-1"><span>จำนวนเงินที่ถูกหัก ณ ที่จ่าย</span><span>{fmt(whtAmount)} บาท</span></div>
+                  <div className="flex justify-between text-sm font-semibold text-gray-700 border-t border-gray-200 pt-1"><span>จำนวนเงินที่ชำระ</span><span>{fmt(Math.round((total - whtAmount) * 100) / 100)} บาท</span></div>
                 </div>
               </div>
 
