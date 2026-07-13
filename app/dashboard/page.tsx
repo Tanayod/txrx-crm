@@ -6,9 +6,9 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight } from '@tabler/icons-react'
+import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight, IconInfoCircle } from '@tabler/icons-react'
 
-const DAYS_TH = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const DAYS_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 
 const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
@@ -120,7 +120,7 @@ export default function Dashboard() {
     const totalActual = rangeData?.reduce((s,b) => s + (getMc(b)?.actual_count || 0), 0) || 0
     const utilization = totalBooked > 0 ? Math.min(Math.round((totalActual/totalBooked)*100), 100) : 0
 
-    // ✅ ยอดตรวจรวมตามช่วงที่กรอง (เทียบช่วงก่อนหน้า)
+    // ยอดตรวจรวมตามช่วงที่กรอง (เทียบช่วงก่อนหน้า)
     const rangeTotal = totalActual
     const prevRangeTotal = prevData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
 
@@ -176,7 +176,7 @@ export default function Dashboard() {
       renew: renewList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5)
     })
 
-    // ✅ Aging certs — นับเฉพาะ cert_status = 'รอส่ง' เท่านั้น
+    // Aging certs — นับเฉพาะ cert_status = 'รอส่ง' เท่านั้น
     let allYearMedical: any[] = []
     let agingFrom = 0
     while (true) {
@@ -192,7 +192,6 @@ export default function Dashboard() {
       agingFrom += 1000
     }
 
-    // สูตรเดียวกับระบบเก่า: ค้างใบแพทย์ = จำนวนตรวจจริง - จำนวนใบแพทย์ที่ส่งแล้ว (ไม่สนใจ cert_status)
     const agingList = (allYearMedical || [])
       .map(b => {
         const mc = getMc(b)
@@ -213,7 +212,7 @@ export default function Dashboard() {
     const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 5))
 
-    // ✅ สรุปยอดหนี้ค้าง แยกตามประเภทงาน
+    // สรุปยอดหนี้ค้าง แยกตามประเภทงาน
     let allDebtBookings: any[] = []
     let debtFrom = 0
     while (true) {
@@ -247,7 +246,7 @@ export default function Dashboard() {
     setDebtByService(Object.entries(debtByType).sort((a: any, b: any) => b[1] - a[1]).map(([name, amount]) => ({ name, amount })))
     setTotalDebt(debtSum)
 
-    // ✅ สรุปยอดขายซิมตาม package + ประเภท (ตามช่วงที่กรอง)
+    // สรุปยอดขายซิมตาม package + ประเภท (ตามช่วงที่กรอง)
     let allSimItems: any[] = []
     let simFrom = 0
     while (true) {
@@ -260,7 +259,6 @@ export default function Dashboard() {
     }
     const bookingIdsWithSimItems = new Set(allSimItems.map((s: any) => s.booking_id))
 
-    // ข้อมูลเก่าก่อนระบบหลายแพ็คเกจ — มี sim_count ที่ bookings ตรงๆ แต่ไม่มีแถวใน sim_items
     let allLegacySimBookings: any[] = []
     let legacyFrom = 0
     while (true) {
@@ -298,7 +296,7 @@ export default function Dashboard() {
       return { package: pkg, type, count }
     }))
 
-    // ✅ สรุปยอดตรวจพิเศษ (ตามช่วงที่กรอง)
+    // สรุปยอดตรวจพิเศษ (ตามช่วงที่กรอง)
     let allSpecialItems: any[] = []
     let spFrom = 0
     while (true) {
@@ -352,18 +350,30 @@ export default function Dashboard() {
   const handleFilter = () => { setLoaded(false) }
   const { from, to } = getDateRange()
 
-  const pctDiff = (cur: number, prev: number) => {
-    if (prev === 0) return { pct: 0, up: true }
-    const p = ((cur - prev) / prev * 100)
-    return { pct: Math.abs(Math.round(p)), up: p >= 0 }
+  // ===== ตรรกะเปรียบเทียบที่ปลอดภัยจากค่า 0 และฐานเทียบน้อยเกินไป =====
+  // แทนที่จะโชว์ "-100%" (น่าตกใจ) หรือ "+1414%" (ไม่มีความหมาย) จะอธิบายเป็นข้อความแทน
+  type CompareResult = { text: string; color: string; arrow: 'up' | 'down' | null }
+  const compareValues = (cur: number, prev: number, minBaseForPct = 5): CompareResult => {
+    if (cur === 0 && prev === 0) return { text: 'ยังไม่มีข้อมูล', color: 'text-gray-400', arrow: null }
+    if (prev === 0) return { text: 'ไม่มีข้อมูลช่วงก่อนมาเทียบ', color: 'text-gray-400', arrow: null }
+    if (cur === 0) return { text: 'ยังไม่มีข้อมูลช่วงนี้', color: 'text-gray-400', arrow: null }
+    const diff = cur - prev
+    const p = (diff / prev) * 100
+    const up = p >= 0
+    if (prev < minBaseForPct) {
+      // ฐานเทียบน้อยเกินไป (เช่น 1-4 เคส) เปอร์เซ็นต์จะดูเว่อร์เกินจริง โชว์เป็นจำนวนดิบแทน
+      return { text: `${up ? 'เพิ่มขึ้น' : 'ลดลง'} ${Math.abs(diff).toLocaleString()} (ฐานเทียบน้อย)`, color: up ? 'text-emerald-600' : 'text-red-500', arrow: up ? 'up' : 'down' }
+    }
+    return { text: `${up ? '+' : '-'}${Math.abs(Math.round(p))}%`, color: up ? 'text-emerald-600' : 'text-red-500', arrow: up ? 'up' : 'down' }
   }
 
   const Trend = ({ cur, prev, label }: { cur: number, prev: number, label?: string }) => {
-    const { pct, up } = pctDiff(cur, prev)
+    const r = compareValues(cur, prev)
     return (
-      <span className={`flex items-center gap-0.5 text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>
-        {up ? <IconTrendingUp size={11}/> : <IconTrendingDown size={11}/>}
-        {up ? '+' : '-'}{pct}% {label || ''}
+      <span className={`flex items-center gap-0.5 text-xs font-semibold ${r.color}`}>
+        {r.arrow === 'up' && <IconTrendingUp size={11}/>}
+        {r.arrow === 'down' && <IconTrendingDown size={11}/>}
+        {r.text} {label || ''}
       </span>
     )
   }
@@ -380,8 +390,8 @@ export default function Dashboard() {
 
         <div className="flex justify-between items-center mb-5">
           <div>
-            <p className="text-base font-semibold text-gray-800">Dashboard</p>
-            <p className="text-xs text-gray-400 mt-0.5">{from} — {to}</p>
+            <p className="text-base font-semibold text-gray-800">ภาพรวมธุรกิจ</p>
+            <p className="text-xs text-gray-400 mt-0.5">แสดงข้อมูลช่วง {from} — {to}</p>
           </div>
           <div className="flex items-center gap-2">
             <input type="month" value={filterMonth}
@@ -402,43 +412,54 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 mb-4 flex items-start gap-2">
+          <IconInfoCircle size={16} className="text-blue-500 flex-shrink-0 mt-0.5"/>
+          <p className="text-xs text-blue-700">
+            ตัวเลข "เทียบกับ" ด้านล่าง คือเทียบกับช่วงเวลาเดียวกันก่อนหน้า (วันนี้เทียบเมื่อวาน, สัปดาห์นี้เทียบสัปดาห์ก่อน, เดือนนี้เทียบเดือนก่อน)
+            ถ้าขึ้นว่า <span className="font-semibold">"ยังไม่มีข้อมูล"</span> แปลว่าช่วงนั้นยังไม่มีการบันทึกจอง/ตรวจเข้ามา ไม่ใช่ยอดตก
+          </p>
+        </div>
+
         <div className="grid grid-cols-3 gap-3 mb-3">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-3">Day to Date</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">ยอดตรวจวันนี้</p>
+            <p className="text-xs text-gray-300 mb-3">นับเฉพาะวันนี้วันเดียว</p>
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-4xl font-bold text-gray-800">{loading ? '—' : kpi.dtd.toLocaleString()}</p>
-                <p className="text-xs text-gray-400 mt-1">คน · วันนี้</p>
+                <p className="text-xs text-gray-400 mt-1">คน</p>
               </div>
               <div className="text-right">
                 <Trend cur={kpi.dtd} prev={kpi.dtdPrev}/>
-                <p className="text-xs text-gray-400 mt-0.5">vs เมื่อวาน {kpi.dtdPrev}</p>
+                <p className="text-xs text-gray-400 mt-0.5">เทียบเมื่อวาน ({kpi.dtdPrev} คน)</p>
               </div>
             </div>
           </div>
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-3">Week to Date</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">ยอดตรวจสัปดาห์นี้</p>
+            <p className="text-xs text-gray-300 mb-3">นับตั้งแต่วันจันทร์ถึงวันนี้</p>
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-4xl font-bold text-gray-800">{loading ? '—' : kpi.wtd.toLocaleString()}</p>
-                <p className="text-xs text-gray-400 mt-1">รวม · เฉลี่ย {loading ? '—' : kpi.wtdAvg.toFixed(1)}/วัน</p>
+                <p className="text-xs text-gray-400 mt-1">คน · เฉลี่ยวันละ {loading ? '—' : kpi.wtdAvg.toFixed(1)}</p>
               </div>
               <div className="text-right">
                 <Trend cur={kpi.wtdAvg} prev={kpi.wtdPrevAvg}/>
-                <p className="text-xs text-gray-400 mt-0.5">vs สัปดาห์ก่อน {kpi.wtdPrevAvg.toFixed(1)}/วัน</p>
+                <p className="text-xs text-gray-400 mt-0.5">เทียบสัปดาห์ก่อน (เฉลี่ย {kpi.wtdPrevAvg.toFixed(1)}/วัน)</p>
               </div>
             </div>
           </div>
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-3">Month to Date</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">ยอดตรวจเดือนนี้</p>
+            <p className="text-xs text-gray-300 mb-3">นับตั้งแต่วันที่ 1 ถึงวันนี้</p>
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-4xl font-bold text-gray-800">{loading ? '—' : kpi.mtd.toLocaleString()}</p>
-                <p className="text-xs text-gray-400 mt-1">รวม · เฉลี่ย {loading ? '—' : kpi.mtdAvg.toFixed(1)}/วัน</p>
+                <p className="text-xs text-gray-400 mt-1">คน · เฉลี่ยวันละ {loading ? '—' : kpi.mtdAvg.toFixed(1)}</p>
               </div>
               <div className="text-right">
                 <Trend cur={kpi.mtdAvg} prev={kpi.mtdPrevAvg}/>
-                <p className="text-xs text-gray-400 mt-0.5">vs เดือนก่อน {kpi.mtdPrevAvg.toFixed(1)}/วัน</p>
+                <p className="text-xs text-gray-400 mt-0.5">เทียบเดือนก่อน (เฉลี่ย {kpi.mtdPrevAvg.toFixed(1)}/วัน)</p>
               </div>
             </div>
           </div>
@@ -446,38 +467,39 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-6 gap-3 mb-4">
           <div className="bg-white border-l-4 border-l-sky-500 border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">ยอดตรวจช่วงที่กรอง</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">ยอดตรวจตามช่วงที่กรอง</p>
             <p className="text-3xl font-bold text-sky-600">{loading ? '—' : kpi.rangeTotal.toLocaleString()}</p>
-            <Trend cur={kpi.rangeTotal} prev={kpi.prevRangeTotal} label="vs ช่วงก่อน"/>
+            <Trend cur={kpi.rangeTotal} prev={kpi.prevRangeTotal} label="เทียบช่วงก่อน"/>
           </div>
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Utilization</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">อัตรามาตรวจจริง</p>
             <p className="text-3xl font-bold text-[#185FA5]">{loading ? '—' : `${kpi.utilization}%`}</p>
             <div className="mt-2 bg-gray-100 rounded-full h-1.5">
               <div className="bg-[#185FA5] h-1.5 rounded-full transition-all" style={{ width: `${kpi.utilization}%` }}/>
             </div>
-            <p className="text-xs text-gray-400 mt-1">จอง vs ตรวจจริง</p>
+            <p className="text-xs text-gray-400 mt-1">คนที่มาตรวจจริง ÷ คนที่จองไว้</p>
           </div>
           <div className="bg-white border-l-4 border-l-emerald-500 border border-gray-100 rounded-xl p-4 shadow-sm cursor-pointer" onClick={() => window.location.href='/payments'}>
             <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">รับเงินช่วงนี้</p>
             <p className="text-3xl font-bold text-emerald-600">฿{loading ? '—' : kpi.revenue.toLocaleString()}</p>
-            <Trend cur={kpi.revenue} prev={kpi.prevRevenue} label="vs ช่วงก่อน"/>
+            <Trend cur={kpi.revenue} prev={kpi.prevRevenue} label="เทียบช่วงก่อน"/>
           </div>
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Active</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">ลูกค้าที่ใช้บริการ</p>
             <p className="text-3xl font-bold text-gray-800">{loading ? '—' : kpi.activeCustomers}</p>
-            <p className="text-xs text-gray-400 mt-1">จาก {kpi.totalCustomers} ราย</p>
+            <p className="text-xs text-gray-400 mt-1">จากลูกค้าทั้งหมด {kpi.totalCustomers} ราย</p>
           </div>
           <div className="bg-white border-l-4 border-l-purple-500 border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">Repeat Rate</p>
+            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-2">ลูกค้ากลับมาซ้ำ</p>
             <p className="text-3xl font-bold text-purple-600">{loading ? '—' : `${kpi.repeatRate}%`}</p>
-            <p className="text-xs text-gray-400 mt-1">Loyalty</p>
+            <p className="text-xs text-gray-400 mt-1">ของลูกค้าที่ใช้บริการช่วงนี้</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-5">📊 Peak Day Analysis</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">📊 วันที่มีคนตรวจเยอะที่สุด</p>
+            <p className="text-xs text-gray-300 mb-4">รวมยอดตรวจของแต่ละวันในสัปดาห์ (ตามช่วงที่กรอง)</p>
             <div className="flex items-end gap-2 h-32">
               {DAYS_TH.map((d, i) => {
                 const isPeak = peakDays[i] === Math.max(...peakDays) && peakDays[i] > 0
@@ -497,12 +519,13 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">📋 ประเภทงาน (เทียบช่วงก่อน)</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">📋 แยกตามประเภทงาน</p>
+            <p className="text-xs text-gray-300 mb-4">เทียบกับช่วงก่อนหน้า</p>
             <div className="space-y-3">
               {serviceBreakdown.length === 0 && !loading && <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูล</p>}
               {serviceBreakdown.map(s => {
                 const prev = prevServiceBreakdown.find(p => p.name === s.name)?.count || 0
-                const { pct, up } = pctDiff(s.count, prev)
+                const r = compareValues(s.count, prev)
                 const colors: any = { 'ตรวจนอกสถานที่ (Mobile)': '#185FA5', 'คลินิก': '#7C3AED', 'Walk-in': '#059669', 'ไฟล์ทบิน': '#0EA5E9' }
                 const color = colors[s.name] || '#94A3B8'
                 return (
@@ -511,7 +534,7 @@ export default function Dashboard() {
                       <span className="text-sm text-gray-700">{s.name}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-gray-800">{s.count.toLocaleString()}</span>
-                        <span className={`text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>{up?'+':'-'}{pct}%</span>
+                        <span className={`text-xs font-semibold ${r.color}`}>{r.text}</span>
                       </div>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
@@ -523,14 +546,14 @@ export default function Dashboard() {
             </div>
             <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2">
               <div className="bg-red-50 border border-red-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/payments'}>
-                <p className="text-xs text-red-500 font-semibold mb-0.5">ค้างชำระ</p>
+                <p className="text-xs text-red-500 font-semibold mb-0.5">รอเก็บเงิน</p>
                 <p className="text-2xl font-bold text-red-500">{kpi.pendingPayments}</p>
-                <p className="text-xs text-red-400">รายการ</p>
+                <p className="text-xs text-red-400">รายการ (ยังไม่ชำระ/ค้างชำระ)</p>
               </div>
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/medical'}>
-                <p className="text-xs text-amber-600 font-semibold mb-0.5">ค้างใบแพทย์</p>
+                <p className="text-xs text-amber-600 font-semibold mb-0.5">รอส่งใบแพทย์</p>
                 <p className="text-2xl font-bold text-amber-500">{kpi.overdueCerts.toLocaleString()}</p>
-                <p className="text-xs text-amber-400">ใบ · รอส่ง</p>
+                <p className="text-xs text-amber-400">ใบ ที่ยังไม่ได้ส่งให้ลูกค้า</p>
               </div>
             </div>
           </div>
@@ -538,10 +561,11 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">👥 Top Customers</p>
+            <div className="flex justify-between items-center mb-1">
+              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">👥 ลูกค้าที่ใช้บริการเยอะสุด</p>
               <span className="text-xs text-[#185FA5] font-semibold">{topCustomers.length} ราย</span>
             </div>
+            <p className="text-xs text-gray-300 mb-3">เรียงตามจำนวนคนที่มาตรวจในช่วงที่กรอง</p>
             <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
               {topCustomers.length === 0 && !loading && <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูล</p>}
               {topCustomers.map((c, i) => (
@@ -562,15 +586,16 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">⚠️ Aging ใบแพทย์</p>
-              <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">รอส่ง {kpi.overdueCerts.toLocaleString()} ใบ</span>
+            <div className="flex justify-between items-center mb-1">
+              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">⚠️ ใบแพทย์ที่ค้างนานสุด</p>
+              <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">รอส่งรวม {kpi.overdueCerts.toLocaleString()} ใบ</span>
             </div>
+            <p className="text-xs text-gray-300 mb-3">เรียงจากค้างเยอะสุดไปน้อยสุด</p>
             <div className="space-y-2">
               {agingCerts.length === 0 && !loading && (
                 <div className="text-center py-6">
                   <p className="text-2xl mb-1">✅</p>
-                  <p className="text-sm text-emerald-600 font-medium">ไม่มีค้างใบแพทย์</p>
+                  <p className="text-sm text-emerald-600 font-medium">ไม่มีใบแพทย์ค้างส่ง</p>
                 </div>
               )}
               {agingCerts.map((c, i) => (
@@ -580,9 +605,9 @@ export default function Dashboard() {
                     <p className="text-xs text-gray-400">{c.case_number} · {c.booking_date}</p>
                   </div>
                   <div className="text-right flex-shrink-0 ml-2">
-                    <p className="text-xs font-bold text-red-500">{c.pending} ใบ</p>
+                    <p className="text-xs font-bold text-red-500">ค้าง {c.pending} ใบ</p>
                     <span className="text-xs text-red-400 flex items-center gap-0.5 justify-end">
-                      <IconAlertTriangle size={9}/> ค้าง {c.daysOver} วัน
+                      <IconAlertTriangle size={9}/> {c.daysOver} วันที่แล้ว
                     </span>
                   </div>
                 </div>
@@ -596,27 +621,28 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">💤 Retention (90 วัน)</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">💤 ลูกค้าที่หายไปนาน</p>
+            <p className="text-xs text-gray-300 mb-3">ไม่มาใช้บริการเกิน 90 วัน</p>
             <div className="mb-3">
-              <p className="text-xs text-[#185FA5] font-bold mb-2">📌 MOU / ไฟล์ทบิน</p>
+              <p className="text-xs text-[#185FA5] font-bold mb-2">📌 กลุ่มไฟล์ทบิน / MOU</p>
               <div className="space-y-1.5">
                 {inactiveCustomers.mou.length === 0 && <p className="text-xs text-gray-400">ไม่มี</p>}
                 {inactiveCustomers.mou.map(c => (
                   <div key={c.name} className="flex items-center justify-between py-1 border-b border-gray-50">
                     <span className="text-xs text-gray-700 truncate flex-1">{c.name}</span>
-                    <span className="text-xs text-gray-400 ml-2 flex-shrink-0">หาย {c.daysAgo} วัน</span>
+                    <span className="text-xs text-gray-400 ml-2 flex-shrink-0">หายไป {c.daysAgo} วัน</span>
                   </div>
                 ))}
               </div>
             </div>
             <div className="border-t border-gray-100 pt-3">
-              <p className="text-xs text-amber-600 font-bold mb-2">📌 ต่ออายุ / อื่นๆ</p>
+              <p className="text-xs text-amber-600 font-bold mb-2">📌 กลุ่มอื่นๆ (ควรติดต่อชวนกลับมา)</p>
               <div className="space-y-1.5">
                 {inactiveCustomers.renew.length === 0 && <p className="text-xs text-gray-400">ไม่มี</p>}
                 {inactiveCustomers.renew.map(c => (
                   <div key={c.name} className="flex items-center justify-between py-1 border-b border-gray-50">
                     <span className="text-xs text-gray-700 truncate flex-1">{c.name}</span>
-                    <span className="text-xs text-gray-400 ml-2 flex-shrink-0">หาย {c.daysAgo} วัน</span>
+                    <span className="text-xs text-gray-400 ml-2 flex-shrink-0">หายไป {c.daysAgo} วัน</span>
                   </div>
                 ))}
               </div>
@@ -625,10 +651,11 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm mt-4">
-          <div className="flex justify-between items-center mb-4">
-            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">💳 สรุปยอดหนี้ค้างชำระ (รวมยอดยกมา)</p>
+          <div className="flex justify-between items-center mb-1">
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">💳 ยอดหนี้ค้างชำระทั้งหมด</p>
             <span className="text-xl font-bold text-red-500">฿{loading ? '—' : totalDebt.toLocaleString()}</span>
           </div>
+          <p className="text-xs text-gray-300 mb-4">รวมยอดยกมาก่อนใช้ระบบด้วย</p>
           {debtByService.length === 0 && !loading ? (
             <p className="text-sm text-gray-400 text-center py-4">ไม่มียอดค้างชำระ</p>
           ) : (
@@ -653,7 +680,8 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-2 gap-4 mt-4">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">📱 สรุปยอดขายซิมตามแพ็กเกจ</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">📱 ยอดขายซิมตามแพ็กเกจ</p>
+            <p className="text-xs text-gray-300 mb-4">ตามช่วงที่กรอง</p>
             {simSummary.length === 0 && !loading ? (
               <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูลในช่วงนี้</p>
             ) : (
@@ -681,10 +709,11 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">🔬 สรุปยอดตรวจพิเศษ</p>
+            <div className="flex justify-between items-center mb-1">
+              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">🔬 ยอดตรวจพิเศษ</p>
               <span className="text-sm font-bold text-blue-600">฿{loading ? '—' : specialExamTotal.toLocaleString()}</span>
             </div>
+            <p className="text-xs text-gray-300 mb-4">ตามช่วงที่กรอง</p>
             {specialExamSummary.length === 0 && !loading ? (
               <p className="text-sm text-gray-400 text-center py-4">ไม่มีข้อมูลในช่วงนี้</p>
             ) : (
