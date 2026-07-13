@@ -551,14 +551,19 @@ export default function Dashboard() {
               {monthlyTrend.map((m, i) => {
                 const maxCount = Math.max(...monthlyTrend.map(x => x.count), 1)
                 const isCurrent = i === monthlyTrend.length - 1
+                const barPct = Math.round((m.count/maxCount)*100)
                 return (
                   <div key={m.key} className="flex-1 flex flex-col items-center gap-1">
                     <span className="text-xs font-semibold text-gray-700">{m.count > 0 ? m.count.toLocaleString() : ''}</span>
-                    <div className="w-full rounded-t-lg transition-all duration-500" style={{
-                      height: `${Math.round((m.count/maxCount)*100)}%`,
-                      minHeight: m.count > 0 ? '6px' : '2px',
-                      background: isCurrent ? '#185FA5' : '#BFDBFE'
-                    }}/>
+                    {/* กล่องนี้ต้องมีความสูงตายตัว (px) เพื่อให้แท่งกราฟด้านในคำนวณ % ความสูงได้ถูกต้อง
+                        (ถ้าปล่อยให้กล่องแม่สูงตาม auto เปอร์เซ็นต์จะคำนวณไม่ได้ ทุกแท่งจะเหลือแค่ความสูงขั้นต่ำเท่ากันหมด) */}
+                    <div className="w-full flex items-end" style={{ height: '96px' }}>
+                      <div className="w-full rounded-t-lg transition-all duration-500" style={{
+                        height: `${barPct}%`,
+                        minHeight: m.count > 0 ? '6px' : '2px',
+                        background: isCurrent ? '#185FA5' : '#BFDBFE'
+                      }}/>
+                    </div>
                     <span className={`text-xs mt-1 ${isCurrent ? 'text-[#185FA5] font-bold' : 'text-gray-400'}`}>{m.label}</span>
                     <span className="text-xs text-emerald-600 font-medium">฿{m.revenue >= 1000 ? `${Math.round(m.revenue/1000)}k` : m.revenue}</span>
                   </div>
