@@ -12,6 +12,16 @@ const DAYS_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 
 const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
+// แปลง Date เป็น "YYYY-MM-DD" ตาม local timezone ตรงๆ (ไม่ผ่าน UTC)
+// สำคัญมาก: ห้ามใช้ .toISOString().slice(0,10) กับ Date ที่มาจาก "วันนี้/เมื่อวาน" เพราะประเทศไทย (UTC+7)
+// พอตั้งเที่ยงคืนตาม local time แล้วแปลงเป็น UTC จะเลื่อนไปเป็นบ่ายสามโมงของ "เมื่อวาน" ทำให้วันที่เพี้ยนไป 1 วัน
+const localDateStr = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export default function Dashboard() {
   const { user, role, ready, logout } = useAuth('/dashboard')
   const [loaded, setLoaded] = useState(false)
@@ -63,12 +73,12 @@ export default function Dashboard() {
   async function fetchAll() {
     setLoading(true)
     const today = new Date(); today.setHours(0,0,0,0)
-    const todayStr = today.toISOString().slice(0,10)
+    const todayStr = localDateStr(today)
     const { from, to } = getDateRange()
 
     // DTD
     const yesterday = new Date(today); yesterday.setDate(today.getDate()-1)
-    const yestStr = yesterday.toISOString().slice(0,10)
+    const yestStr = localDateStr(yesterday)
     const { data: todayBookings } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').eq('booking_date', todayStr)
     const { data: yestBookings } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').eq('booking_date', yestStr)
     const dtd = todayBookings?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
@@ -81,8 +91,8 @@ export default function Dashboard() {
     const startOfW = new Date(today); startOfW.setDate(today.getDate() - diffToMon)
     const startOfLastW = new Date(startOfW); startOfLastW.setDate(startOfW.getDate() - 7)
     const endOfLastW = new Date(startOfLastW); endOfLastW.setDate(startOfLastW.getDate() + 6)
-    const { data: wtdData } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', startOfW.toISOString().slice(0,10)).lte('booking_date', todayStr)
-    const { data: lastWData } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', startOfLastW.toISOString().slice(0,10)).lte('booking_date', endOfLastW.toISOString().slice(0,10))
+    const { data: wtdData } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', localDateStr(startOfW)).lte('booking_date', todayStr)
+    const { data: lastWData } = await supabase.from('bookings').select('booked_count, medical_cases(actual_count)').gte('booking_date', localDateStr(startOfLastW)).lte('booking_date', localDateStr(endOfLastW))
     const wtd = wtdData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
     const wtdAvg = wtd / wtdDays
     const lastWTotal = lastWData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
@@ -95,7 +105,7 @@ export default function Dashboard() {
     const lastMonthStart = new Date(today.getFullYear(), today.getMonth()-1, 1)
     const daysInLastMonth = lastMonthEnd.getDate()
     const { data: mtdData } = await supabase.from('bookings').select('booked_count, service_type, booking_date, medical_cases(actual_count), payments(amount_received)').gte('booking_date', firstOfMonth).lte('booking_date', todayStr)
-    const { data: lastMData } = await supabase.from('bookings').select('booked_count, service_type, medical_cases(actual_count), payments(amount_received)').gte('booking_date', lastMonthStart.toISOString().slice(0,10)).lte('booking_date', lastMonthEnd.toISOString().slice(0,10))
+    const { data: lastMData } = await supabase.from('bookings').select('booked_count, service_type, medical_cases(actual_count), payments(amount_received)').gte('booking_date', localDateStr(lastMonthStart)).lte('booking_date', localDateStr(lastMonthEnd))
     const mtd = mtdData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
     const mtdAvg = mtd / mtdDays
     const lastMTotal = lastMData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
@@ -154,7 +164,7 @@ export default function Dashboard() {
 
     // Retention
     const ninetyDaysAgo = new Date(today); ninetyDaysAgo.setDate(today.getDate()-90)
-    const { data: allBookings } = await supabase.from('bookings').select('booking_date, service_type, customers(customer_name)').gte('booking_date', ninetyDaysAgo.toISOString().slice(0,10)).lte('booking_date', yestStr)
+    const { data: allBookings } = await supabase.from('bookings').select('booking_date, service_type, customers(customer_name)').gte('booking_date', localDateStr(ninetyDaysAgo)).lte('booking_date', yestStr)
     const lastSeen: any = {}
     allBookings?.forEach(b => {
       const n = (b.customers as any)?.customer_name
