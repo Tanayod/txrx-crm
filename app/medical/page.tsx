@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconUpload, IconCheck, IconClock, IconAlertTriangle, IconSearch, IconDownload } from '@tabler/icons-react'
+import { IconUpload, IconCheck, IconClock, IconAlertTriangle, IconSearch, IconDownload, IconLink } from '@tabler/icons-react'
 
 export default function Medical() {
   const { user, role, ready, logout } = useAuth('/medical')
@@ -17,6 +17,11 @@ export default function Medical() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '', parcel_sent: false })
   const [loaded, setLoaded] = useState(false)
+
+  // สำหรับแนบลิงก์ (เช่น Google Drive, Dropbox) แทนการอัปโหลดไฟล์ตรง — เลี่ยงปัญหาไฟล์ใหญ่เกินลิมิต
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkName, setLinkName] = useState('')
+  const [savingLink, setSavingLink] = useState(false)
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
   const [search, setSearch] = useState('')
@@ -61,6 +66,7 @@ export default function Medical() {
     setForm({ actual_count: mc?.actual_count || 0, cert_count: mc?.cert_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date, parcel_sent: mc?.parcel_sent || false })
     if (mc?.id) await fetchCertificates(mc.id)
     else setCertificates([])
+    setLinkUrl(''); setLinkName('')
     setShowModal(true)
   }
 
@@ -84,15 +90,48 @@ export default function Medical() {
     const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบไฟล์'); setUploading(false); return }
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-const fileName = `${mc.id}/${Date.now()}_${safeName}`
+    const fileName = `${mc.id}/${Date.now()}_${safeName}`
     const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
     if (!error && data) {
       const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
       await supabase.from('certificates').insert([{ case_id: mc.id, file_name: file.name, storage_url: urlData.publicUrl }])
       await supabase.from('medical_cases').update({ cert_status: 'เรียบร้อย' }).eq('id', mc.id)
       fetchCertificates(mc.id); fetchCases()
+    } else if (error) {
+      alert(`อัปโหลดไม่สำเร็จ: ${error.message}`)
     }
     setUploading(false)
+  }
+
+  // แนบลิงก์ URL แทนการอัปโหลดไฟล์โดยตรง (เช่น ลิงก์ Google Drive ที่แชร์ไว้แล้ว) — ไม่มีข้อจำกัดเรื่องขนาดไฟล์เลย
+  const handleAddLink = async () => {
+    if (!linkUrl.trim()) return
+    // เช็คคร่าวๆ ว่าเป็น URL ที่ใช้ได้
+    try { new URL(linkUrl.trim()) } catch { alert('ลิงก์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง (ต้องขึ้นต้นด้วย http:// หรือ https://)'); return }
+
+    setSavingLink(true)
+    const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
+    if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบลิงก์'); setSavingLink(false); return }
+
+    const { error } = await supabase.from('certificates').insert([{
+      case_id: mc.id,
+      file_name: linkName.trim() || 'ลิงก์ไฟล์แนบ',
+      storage_url: linkUrl.trim(),
+    }])
+    if (!error) {
+      await supabase.from('medical_cases').update({ cert_status: 'เรียบร้อย' }).eq('id', mc.id)
+      fetchCertificates(mc.id); fetchCases()
+      setLinkUrl(''); setLinkName('')
+    } else {
+      alert(`บันทึกลิงก์ไม่สำเร็จ: ${error.message}`)
+    }
+    setSavingLink(false)
+  }
+
+  const handleDeleteCertificate = async (certId: string) => {
+    const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
+    await supabase.from('certificates').delete().eq('id', certId)
+    if (mc?.id) fetchCertificates(mc.id)
   }
 
   const getCertStatus = (booking: any) => {
@@ -355,16 +394,41 @@ const fileName = `${mc.id}/${Date.now()}_${safeName}`
             <div className="border-t border-gray-100 pt-4">
               <p className="text-xs font-medium text-gray-700 mb-2">ใบรับรองแพทย์</p>
               {certificates.map((cert) => (
-                <div key={cert.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mb-1.5">
-                  <IconCheck size={13} className="text-green-600 flex-shrink-0" />
-                  <a href={cert.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate">{cert.file_name}</a>
+                <div key={cert.id} className="flex items-center justify-between gap-2 p-2 bg-green-50 rounded-lg mb-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <IconCheck size={13} className="text-green-600 flex-shrink-0" />
+                    <a href={cert.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate">{cert.file_name}</a>
+                  </div>
+                  <button onClick={() => handleDeleteCertificate(cert.id)} className="text-gray-400 hover:text-red-500 flex-shrink-0 text-xs">ลบ</button>
                 </div>
               ))}
+
+              {/* อัปโหลดไฟล์ตรง */}
               <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
                 <IconUpload size={15} />
                 {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์ใบรับรองแพทย์'}
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.zip" onChange={handleUploadFile} className="hidden" disabled={uploading} />
               </label>
+
+              {/* แนบลิงก์ URL แทน */}
+              <div className="mt-3 bg-sky-50 border border-sky-100 rounded-lg p-3">
+                <p className="text-xs font-medium text-sky-700 mb-2 flex items-center gap-1">
+                  <IconLink size={13} /> หรือแนบลิงก์ไฟล์ (Google Drive, Dropbox ฯลฯ)
+                </p>
+                <div className="space-y-2">
+                  <input type="text" value={linkName} onChange={(e) => setLinkName(e.target.value)}
+                    placeholder="ชื่อไฟล์/คำอธิบาย (ไม่บังคับ)"
+                    className="w-full border border-sky-200 bg-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sky-400" />
+                  <input type="text" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                    className="w-full border border-sky-200 bg-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sky-400" />
+                  <button onClick={handleAddLink} disabled={savingLink || !linkUrl.trim()}
+                    className="w-full py-2 text-xs bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50">
+                    {savingLink ? 'กำลังบันทึก...' : '+ เพิ่มลิงก์'}
+                  </button>
+                </div>
+                <p className="text-xs text-sky-500 mt-1.5">⚠️ ถ้าใช้ Google Drive อย่าลืมเปลี่ยนสิทธิ์แชร์เป็น "ทุกคนที่มีลิงก์" ก่อน ไม่งั้นคนอื่นเปิดดูไม่ได้</p>
+              </div>
             </div>
             <div className="flex justify-end mt-4">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
