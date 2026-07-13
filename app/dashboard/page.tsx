@@ -9,6 +9,7 @@ import Sidebar from '../components/Sidebar'
 import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight, IconInfoCircle } from '@tabler/icons-react'
 
 const DAYS_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
+const MONTHS_TH_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
 const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
@@ -50,6 +51,8 @@ export default function Dashboard() {
   const [simSummary, setSimSummary] = useState<any[]>([])
   const [specialExamSummary, setSpecialExamSummary] = useState<any[]>([])
   const [specialExamTotal, setSpecialExamTotal] = useState(0)
+  const [specialExamTotalCount, setSpecialExamTotalCount] = useState(0)
+  const [monthlyTrend, setMonthlyTrend] = useState<any[]>([])
 
   const now = new Date()
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`)
@@ -337,6 +340,40 @@ export default function Dashboard() {
     })
     setSpecialExamSummary(Object.entries(specialGroup).sort((a: any, b: any) => b[1].amount - a[1].amount).map(([name, v]: any) => ({ name, count: v.count, amount: v.amount })))
     setSpecialExamTotal(specialSum)
+    setSpecialExamTotalCount(Object.values(specialGroup).reduce((s: number, v: any) => s + v.count, 0))
+
+    // ===== แนวโน้มรายเดือน (ย้อนหลัง 6 เดือน รวมเดือนนี้) — จำนวนคนตรวจ + รายได้ แยกตามเดือน =====
+    const monthsBack = 5
+    const trendStartDate = new Date(today.getFullYear(), today.getMonth() - monthsBack, 1)
+    const trendEndDate = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    const trendStartStr = localDateStr(trendStartDate)
+    const trendEndStr = localDateStr(trendEndDate)
+    let allTrendBookings: any[] = []
+    let trendFrom = 0
+    while (true) {
+      const { data: chunk } = await supabase.from('bookings')
+        .select('booking_date, booked_count, medical_cases(actual_count), payments(amount_received)')
+        .gte('booking_date', trendStartStr)
+        .lte('booking_date', trendEndStr)
+        .range(trendFrom, trendFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allTrendBookings = [...allTrendBookings, ...chunk]
+      if (chunk.length < 1000) break
+      trendFrom += 1000
+    }
+    const monthMap: any = {}
+    for (let i = 0; i <= monthsBack; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() - monthsBack + i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+      monthMap[key] = { key, count: 0, revenue: 0, label: MONTHS_TH_SHORT[d.getMonth()], year: d.getFullYear() }
+    }
+    allTrendBookings.forEach((b: any) => {
+      const key = b.booking_date?.slice(0,7)
+      if (!key || !monthMap[key]) return
+      monthMap[key].count += (getMc(b)?.actual_count || b.booked_count || 0)
+      monthMap[key].revenue += ((Array.isArray(b.payments) ? b.payments?.[0] : b.payments)?.amount_received || 0)
+    })
+    setMonthlyTrend(Object.values(monthMap))
 
     // Pending payments
     const { data: allCustomers } = await supabase.from('customers').select('id')
@@ -508,23 +545,26 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">📊 วันที่มีคนตรวจเยอะที่สุด</p>
-            <p className="text-xs text-gray-300 mb-4">รวมยอดตรวจของแต่ละวันในสัปดาห์ (ตามช่วงที่กรอง)</p>
-            <div className="flex items-end gap-2 h-32">
-              {DAYS_TH.map((d, i) => {
-                const isPeak = peakDays[i] === Math.max(...peakDays) && peakDays[i] > 0
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">📊 แนวโน้มรายเดือน</p>
+            <p className="text-xs text-gray-300 mb-5">จำนวนคนตรวจ และรายได้ ย้อนหลัง 6 เดือน (ไม่ขึ้นกับตัวกรองด้านบน)</p>
+            <div className="flex items-end gap-3 h-40">
+              {monthlyTrend.map((m, i) => {
+                const maxCount = Math.max(...monthlyTrend.map(x => x.count), 1)
+                const isCurrent = i === monthlyTrend.length - 1
                 return (
-                  <div key={d} className="flex-1 flex flex-col items-center gap-1.5">
-                    {peakDays[i] > 0 && <span className="text-xs text-gray-500">{peakDays[i]}</span>}
+                  <div key={m.key} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs font-semibold text-gray-700">{m.count > 0 ? m.count.toLocaleString() : ''}</span>
                     <div className="w-full rounded-t-lg transition-all duration-500" style={{
-                      height: `${Math.round((peakDays[i]/maxPeak)*100)}%`,
-                      minHeight: peakDays[i] > 0 ? '6px' : '2px',
-                      background: isPeak ? '#185FA5' : '#BFDBFE'
+                      height: `${Math.round((m.count/maxCount)*100)}%`,
+                      minHeight: m.count > 0 ? '6px' : '2px',
+                      background: isCurrent ? '#185FA5' : '#BFDBFE'
                     }}/>
-                    <span className={`text-xs ${isPeak ? 'text-[#185FA5] font-bold' : 'text-gray-400'}`}>{d}</span>
+                    <span className={`text-xs mt-1 ${isCurrent ? 'text-[#185FA5] font-bold' : 'text-gray-400'}`}>{m.label}</span>
+                    <span className="text-xs text-emerald-600 font-medium">฿{m.revenue >= 1000 ? `${Math.round(m.revenue/1000)}k` : m.revenue}</span>
                   </div>
                 )
               })}
+              {monthlyTrend.length === 0 && !loading && <p className="text-sm text-gray-400 text-center w-full">ไม่มีข้อมูล</p>}
             </div>
           </div>
 
@@ -721,7 +761,10 @@ export default function Dashboard() {
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-1">
               <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">🔬 ยอดตรวจพิเศษ</p>
-              <span className="text-sm font-bold text-blue-600">฿{loading ? '—' : specialExamTotal.toLocaleString()}</span>
+              <div className="text-right">
+                <span className="text-sm font-bold text-blue-600 block">฿{loading ? '—' : specialExamTotal.toLocaleString()}</span>
+                <span className="text-xs text-gray-400">{loading ? '—' : specialExamTotalCount.toLocaleString()} คน/ครั้ง</span>
+              </div>
             </div>
             <p className="text-xs text-gray-300 mb-4">ตามช่วงที่กรอง</p>
             {specialExamSummary.length === 0 && !loading ? (
