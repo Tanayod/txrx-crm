@@ -1,15 +1,13 @@
-// วางไฟล์นี้ที่ app/api/upload/route.ts ในโปรเจกต์ Next.js
-// จุดประสงค์: เป็นตัวกลางรับไฟล์จากหน้าเว็บ แล้วอัปโหลดขึ้น Google Cloud Storage แทน
-// ต้องทำผ่าน backend เท่านั้น เพราะ Service Account Key ห้ามอยู่ฝั่ง browser เด็ดขาด (ใครก็เอาไปใช้ได้ถ้าหลุด)
+// วางไฟล์นี้ที่ app/api/upload/route.ts (แทนที่ของเดิม)
+// เปลี่ยนวิธีทำงาน: แทนที่จะรับไฟล์เข้ามาที่ Vercel แล้วส่งต่อ (ติด limit 4.5MB ของ Vercel)
+// เปลี่ยนเป็นสร้าง "signed URL" ให้บราวเซอร์อัปโหลดไฟล์ตรงไปที่ GCS เลย ไม่ผ่าน Vercel
 
 import { NextRequest, NextResponse } from 'next/server'
 import { Storage } from '@google-cloud/storage'
 
 export const dynamic = 'force-dynamic'
-export const runtime = 'nodejs' // จำเป็น ต้องใช้ Node.js runtime ไม่ใช่ Edge (Edge ใช้ @google-cloud/storage ไม่ได้)
+export const runtime = 'nodejs'
 
-// อ่าน credentials จาก environment variable (ตั้งใน Vercel) แทนการอ่านไฟล์ตรงๆ
-// เพราะ Vercel ไม่มี filesystem ถาวรให้เก็บไฟล์ .json ไว้
 function getStorageClient() {
   const rawJson = process.env.GCS_SERVICE_ACCOUNT_JSON
   if (!rawJson) throw new Error('ยังไม่ได้ตั้งค่า GCS_SERVICE_ACCOUNT_JSON ใน environment variables')
@@ -24,32 +22,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ยังไม่ได้ตั้งค่า GCS_BUCKET_NAME ใน environment variables' }, { status: 500 })
     }
 
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    const folder = (formData.get('folder') as string) || 'misc'
-
-    if (!file) {
-      return NextResponse.json({ error: 'ไม่พบไฟล์ที่จะอัปโหลด' }, { status: 400 })
+    // รับแค่ข้อมูลเล็กๆ (ชื่อไฟล์ + ประเภทไฟล์) ไม่ใช่ตัวไฟล์จริง เพราะงั้นไม่มีทางติด limit ของ Vercel
+    const { fileName, folder, contentType } = await req.json()
+    if (!fileName) {
+      return NextResponse.json({ error: 'ไม่พบชื่อไฟล์' }, { status: 400 })
     }
 
     const storage = getStorageClient()
     const bucket = storage.bucket(bucketName)
 
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const destPath = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${safeName}`
+    const safeName = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')
+    const destPath = `${folder || 'misc'}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${safeName}`
+    const file = bucket.file(destPath)
 
-    await bucket.file(destPath).save(buffer, {
-      resumable: false,
-      contentType: file.type || 'application/octet-stream',
+    // สร้างลิงก์อัปโหลดชั่วคราว อายุ 15 นาที (ให้บราวเซอร์อัปโหลดไฟล์จริงตรงไปที่นี่เลย)
+    const [uploadUrl] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'write',
+      expires: Date.now() + 15 * 60 * 1000,
+      contentType: contentType || 'application/octet-stream',
     })
 
     const publicUrl = `https://storage.googleapis.com/${bucketName}/${destPath}`
 
-    return NextResponse.json({ url: publicUrl, fileName: file.name })
+    return NextResponse.json({ uploadUrl, publicUrl, fileName })
   } catch (err: any) {
-    console.error('อัปโหลดไป GCS ไม่สำเร็จ:', err)
-    return NextResponse.json({ error: err?.message || 'อัปโหลดไม่สำเร็จ' }, { status: 500 })
+    console.error('สร้าง signed URL ไม่สำเร็จ:', err)
+    return NextResponse.json({ error: err?.message || 'เกิดข้อผิดพลาด' }, { status: 500 })
   }
 }

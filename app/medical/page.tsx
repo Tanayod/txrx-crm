@@ -86,16 +86,31 @@ export default function Medical() {
   // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
   const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('folder', folder)
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      // 1. ขอ "ลิงก์อัปโหลดชั่วคราว" จาก backend ก่อน (ส่งแค่ชื่อไฟล์ ไม่ใช่ตัวไฟล์ ไม่มีทางติด limit ของ Vercel)
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, folder, contentType: file.type || 'application/octet-stream' }),
+      })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        console.error('อัปโหลดไม่สำเร็จ:', err)
+        console.error('ขอลิงก์อัปโหลดไม่สำเร็จ:', err)
         return null
       }
-      return await res.json()
+      const { uploadUrl, publicUrl, fileName } = await res.json()
+
+      // 2. อัปโหลดไฟล์จริง "ตรงไปที่ Google Cloud Storage เลย" ไม่ผ่าน Vercel อีกต่อไป
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        console.error('อัปโหลดไป GCS ไม่สำเร็จ:', uploadRes.status)
+        return null
+      }
+
+      return { url: publicUrl, fileName }
     } catch (err) {
       console.error('อัปโหลดไม่สำเร็จ:', err)
       return null
