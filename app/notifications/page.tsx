@@ -41,10 +41,10 @@ function getDueDate(bookingDate: string, dueType: string) {
   return d
 }
 
-// กำหนดส่งใบแพทย์ให้ลูกค้า = วันจอง + 3 วันเสมอ
-function getCertDueDate(bookingDate: string) {
+// กำหนดส่งใบแพทย์ให้ลูกค้า = วันจอง + 3 วัน (ปกติ) หรือ + 7 วัน (ถ้ามีตรวจพิเศษ ผลตรวจใช้เวลานานกว่า)
+function getCertDueDate(bookingDate: string, hasSpecialExam: boolean) {
   const d = new Date(bookingDate)
-  d.setDate(d.getDate() + 3)
+  d.setDate(d.getDate() + (hasSpecialExam ? 7 : 3))
   return d
 }
 
@@ -125,7 +125,7 @@ export default function Notifications() {
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('case_number, booking_date, customers(customer_name, phone), medical_cases(id, actual_count, cert_delivered_to_customer, cert_delivered_at)')
+        .select('id, case_number, booking_date, customers(customer_name, phone), medical_cases(id, actual_count, cert_delivered_to_customer, cert_delivered_at)')
         .range(from, from + 999)
       if (!chunk || chunk.length === 0) break
       all = [...all, ...chunk]
@@ -133,11 +133,23 @@ export default function Notifications() {
       from += 1000
     }
 
+    // เช็คว่า booking ไหนมีตรวจพิเศษผูกอยู่บ้าง (กำหนดส่งจะยาวขึ้นเป็น 7 วันแทน 3 วัน)
+    let specialBookingIds = new Set<string>()
+    let spFrom = 0
+    while (true) {
+      const { data: chunk } = await supabase.from('special_exams').select('booking_id').range(spFrom, spFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      chunk.forEach((s: any) => specialBookingIds.add(s.booking_id))
+      if (chunk.length < 1000) break
+      spFrom += 1000
+    }
+
     const cases = all
       .map((b: any) => {
         const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
         if (!mc?.id) return null
-        const dueDate = getCertDueDate(b.booking_date)
+        const hasSpecialExam = specialBookingIds.has(b.id)
+        const dueDate = getCertDueDate(b.booking_date, hasSpecialExam)
         const dueDateStr = localDateStr(dueDate)
         const daysOver = Math.floor((today.getTime() - dueDate.getTime()) / 86400000)
         const delivered = !!mc.cert_delivered_to_customer
@@ -156,6 +168,7 @@ export default function Notifications() {
           urgency,
           delivered,
           delivered_at: mc.cert_delivered_at,
+          hasSpecialExam,
         }
       })
       .filter(Boolean)
@@ -195,6 +208,7 @@ export default function Notifications() {
   const exportCertExcel = () => {
     const rows = statusFilteredCerts.map(c => ({
       'เลขจอง': c.case_number, 'ลูกค้า': c.customer_name, 'เบอร์โทร': c.phone || '',
+      'ประเภทงาน': c.hasSpecialExam ? 'ตรวจพิเศษ (7 วัน)' : 'ปกติ (3 วัน)',
       'วันที่จอง': c.booking_date, 'ครบกำหนดส่ง': c.due_date,
       'สถานะ': c.delivered ? 'ส่งแล้ว' : 'ยังไม่ส่ง', 'ความเร่งด่วน': c.urgency, 'วันที่ส่ง': c.delivered_at || '',
     }))
@@ -367,7 +381,10 @@ export default function Notifications() {
                 <p className="text-sm text-gray-400 text-center py-8">ไม่มีรายการครบกำหนดวันนี้</p>
               ) : selectedDayCases.map((c, i) => (
                 <div key={i} className="border border-gray-100 rounded-lg p-3">
-                  <p className="text-xs font-medium text-gray-700">{c.customer_name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-medium text-gray-700">{c.customer_name}</p>
+                    {c.hasSpecialExam && <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium">🔬 ตรวจพิเศษ (7 วัน)</span>}
+                  </div>
                   {c.phone && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><IconPhone size={10}/>{c.phone}</p>}
                   <p className="text-xs text-gray-400 font-mono mt-0.5">{c.case_number} · จอง {c.booking_date}</p>
                   <div className="flex items-center justify-between mt-2">
