@@ -83,22 +83,38 @@ export default function Medical() {
     fetchCases(); setShowModal(false)
   }
 
+  // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
+  const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', folder)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error('อัปโหลดไม่สำเร็จ:', err)
+        return null
+      }
+      return await res.json()
+    } catch (err) {
+      console.error('อัปโหลดไม่สำเร็จ:', err)
+      return null
+    }
+  }
+
   const handleUploadFile = async (e: any) => {
     const file = e.target.files[0]
     if (!file) return
     setUploading(true)
     const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
     if (!mc?.id) { alert('กรุณาบันทึกจำนวนตรวจจริงก่อนแนบไฟล์'); setUploading(false); return }
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const fileName = `${mc.id}/${Date.now()}_${safeName}`
-    const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
-      await supabase.from('certificates').insert([{ case_id: mc.id, file_name: file.name, storage_url: urlData.publicUrl }])
+    const uploaded = await uploadFileToGCS(file, 'certificates')
+    if (uploaded) {
+      await supabase.from('certificates').insert([{ case_id: mc.id, file_name: uploaded.fileName, storage_url: uploaded.url }])
       await supabase.from('medical_cases').update({ cert_status: 'เรียบร้อย' }).eq('id', mc.id)
       fetchCertificates(mc.id); fetchCases()
-    } else if (error) {
-      alert(`อัปโหลดไม่สำเร็จ: ${error.message}`)
+    } else {
+      alert('อัปโหลดไม่สำเร็จ กรุณาลองใหม่')
     }
     setUploading(false)
   }

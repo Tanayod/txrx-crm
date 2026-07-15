@@ -63,15 +63,31 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
   }
   if (!signaturesLoaded) { fetchSignatures(); setSignaturesLoaded(true) }
 
+  // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
+  const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', folder)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error('อัปโหลดไม่สำเร็จ:', err)
+        return null
+      }
+      return await res.json()
+    } catch (err) {
+      console.error('อัปโหลดไม่สำเร็จ:', err)
+      return null
+    }
+  }
+
   const handleAddSignature = async () => {
     if (!newSigName || !newSigFile || !addingFor) return
     setSavingSignature(true)
-    const safeName = newSigFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const fileName = `signature_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safeName}`
-    const { data, error } = await supabase.storage.from('certificates').upload(fileName, newSigFile)
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
-      const { data: inserted } = await supabase.from('signatures').insert([{ name: newSigName, image_url: urlData.publicUrl }]).select().single()
+    const uploaded = await uploadFileToGCS(newSigFile, 'signatures')
+    if (uploaded) {
+      const { data: inserted } = await supabase.from('signatures').insert([{ name: newSigName, image_url: uploaded.url }]).select().single()
       if (inserted) {
         setSignatures(prev => [...prev, inserted].sort((a,b) => a.name.localeCompare(b.name)))
         if (addingFor === 'issuer') { setIssuerSignatureId(inserted.id); setIssuerName(inserted.name) }

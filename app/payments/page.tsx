@@ -278,6 +278,26 @@ export default function Payments() {
     setSavingPayment(false)
   }
 
+  // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
+  // (แทนที่การอัปโหลดขึ้น Supabase Storage โดยตรงแบบเดิม)
+  const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', folder)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error('อัปโหลดไม่สำเร็จ:', err)
+        return null
+      }
+      return await res.json()
+    } catch (err) {
+      console.error('อัปโหลดไม่สำเร็จ:', err)
+      return null
+    }
+  }
+
   // อัพโหลดได้ทีละหลายไฟล์ ถ้ายังไม่มี payment ให้สร้างก่อนแบบเงียบๆ
   const handleUploadSlip = async (e: any) => {
     const files: File[] = Array.from(e.target.files || [])
@@ -294,12 +314,9 @@ export default function Payments() {
     }
 
     for (const file of files) {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const fileName = `${selected.id}_slip_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safeName}`
-      const { data, error } = await supabase.storage.from('certificates').upload(fileName, file)
-      if (!error && data) {
-        const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
-        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: file.name, storage_url: urlData.publicUrl }])
+      const uploaded = await uploadFileToGCS(file, 'payment_slips')
+      if (uploaded) {
+        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: uploaded.fileName, storage_url: uploaded.url }])
       }
     }
     await supabase.from('payments').update({ is_verified: true }).eq('id', paymentId)
@@ -387,13 +404,10 @@ export default function Payments() {
     let slipUrl: string | null = null
     let slipFileName: string | null = null
     if (splitSlipFile) {
-      const safeName = splitSlipFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const fileName = `split_${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safeName}`
-      const { data, error } = await supabase.storage.from('certificates').upload(fileName, splitSlipFile)
-      if (!error && data) {
-        const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
-        slipUrl = urlData.publicUrl
-        slipFileName = splitSlipFile.name
+      const uploaded = await uploadFileToGCS(splitSlipFile, 'payment_slips')
+      if (uploaded) {
+        slipUrl = uploaded.url
+        slipFileName = uploaded.fileName
       }
     }
 
