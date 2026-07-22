@@ -221,6 +221,7 @@ export default function Bookings() {
     const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-400', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบ', color: 'bg-green-100 text-green-700', icon: IconCheck }
+    if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-100 text-sky-600', icon: IconClock }
     if (mc.cert_deadline && new Date() > new Date(mc.cert_deadline)) return { label: 'เกิน 3 วัน!', color: 'bg-red-100 text-red-600', icon: IconAlertTriangle }
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-100 text-amber-600', icon: IconClock }
   }
@@ -418,10 +419,10 @@ export default function Bookings() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span className="col-span-2">ลูกค้า</span><span>วันที่</span>
             <span>สถานที่</span><span>จอง/จริง</span><span>ซิม</span>
-            <span>สถานะเงิน</span><span>ใบแพทย์</span><span></span>
+            <span>สถานะเงิน</span><span>ใบแพทย์</span><span>หมายเหตุ</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -435,7 +436,7 @@ export default function Bookings() {
             return (
               <div key={b.id} className="border-b border-gray-50">
                 <div
-                  className="grid grid-cols-10 gap-2 px-5 py-3.5 text-sm hover:bg-blue-50/30 transition-colors items-center cursor-pointer"
+                  className="grid grid-cols-11 gap-2 px-5 py-3.5 text-sm hover:bg-blue-50/30 transition-colors items-center cursor-pointer"
                   onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
                 >
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
@@ -462,10 +463,12 @@ export default function Bookings() {
                       className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#185FA5] ${medStatus.color}`}
                     >
                       <option value="รอบันทึก">รอบันทึก</option>
+                      <option value="รอข้อมูลแรงงาน">รอข้อมูลแรงงาน</option>
                       <option value="รอส่ง">รอส่งใบแพทย์</option>
                       <option value="เรียบร้อย">ส่งครบ</option>
                     </select>
                   </span>
+                  <span className="text-xs text-gray-500 truncate" title={b.admin_note || ''}>{b.admin_note || '-'}</span>
                   <span className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => openEdit(b)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={15}/></button>
                     <button onClick={() => { setDeleteId(b.id); setDeleteError(null) }} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>

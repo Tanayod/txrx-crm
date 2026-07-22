@@ -169,6 +169,7 @@ export default function Medical() {
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-500', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck }
+    if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-50 text-sky-600', icon: IconClock }
     const deadline = new Date(mc.cert_deadline)
     if (new Date() > deadline) return { label: 'เกิน 3 วัน!', color: 'bg-red-50 text-red-600', icon: IconAlertTriangle }
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock }
@@ -327,9 +328,9 @@ export default function Medical() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-7 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+          <div className="grid grid-cols-9 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่ตรวจ</span>
-            <span>สถานที่</span><span>จอง / จริง</span><span>สถานะใบแพทย์</span><span></span>
+            <span>สถานที่</span><span>จอง / จริง</span><span>ใบแพทย์</span><span>ผลต่าง</span><span>สถานะใบแพทย์</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
@@ -337,8 +338,12 @@ export default function Medical() {
             filtered.map((b) => {
               const status = getCertStatus(b)
               const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
+              // ผลต่าง = จำนวนใบแพทย์ - จำนวนตรวจจริง (ลบ = ยังส่งใบแพทย์ไม่ครบ, บวก = ส่งเกินมา, 0 = ครบพอดี)
+              const certCount = mc?.cert_count ?? null
+              const actualCount = mc?.actual_count ?? null
+              const diff = (certCount !== null && actualCount !== null) ? certCount - actualCount : null
               return (
-                <div key={b.id} className="grid grid-cols-7 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+                <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
                   <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
                   <span className="text-gray-500">{mc?.exam_date || b.booking_date}</span>
@@ -354,6 +359,18 @@ export default function Medical() {
                     )}
                   </span>
                   <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
+                  <span className="text-gray-700 font-medium">{certCount?.toLocaleString() ?? '-'}</span>
+                  <span>
+                    {diff === null ? (
+                      <span className="text-xs text-gray-300">-</span>
+                    ) : diff === 0 ? (
+                      <span className="text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md font-medium">ครบ</span>
+                    ) : diff < 0 ? (
+                      <span className="text-xs bg-red-50 text-red-600 px-1.5 py-0.5 rounded-md font-medium">ขาด {Math.abs(diff)}</span>
+                    ) : (
+                      <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-md font-medium">เกิน {diff}</span>
+                    )}
+                  </span>
                   <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={mc?.cert_status || 'รอบันทึก'}
@@ -361,6 +378,7 @@ export default function Medical() {
                       className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#185FA5] ${status.color}`}
                     >
                       <option value="รอบันทึก">รอบันทึก</option>
+                      <option value="รอข้อมูลแรงงาน">รอข้อมูลแรงงาน</option>
                       <option value="รอส่ง">รอส่งใบแพทย์</option>
                       <option value="เรียบร้อย">ส่งครบแล้ว</option>
                     </select>
