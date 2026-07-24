@@ -6,38 +6,90 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconSearch, IconDownload, IconRefresh } from '@tabler/icons-react'
+import { IconUpload, IconCheck, IconSearch, IconDownload, IconPlus, IconX, IconMicroscope, IconSettings, IconReceipt } from '@tabler/icons-react'
+import ReceiptModal from '../components/ReceiptModal'
+import CompanySettingsModal from '../components/CompanySettingsModal'
 
-const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-export default function FinanceReport() {
-  const { user, role, ready, logout } = useAuth('/finance-report')
-  const [rows, setRows] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+export default function Payments() {
+  const { user, role, ready, logout } = useAuth('/payments')
+  const [bookings, setBookings] = useState<any[]>([])
+  const [bankAccounts, setBankAccounts] = useState<any[]>([])
+  const [companySettings, setCompanySettings] = useState<any>(null)
+  const [showCompanySettings, setShowCompanySettings] = useState(false)
+  const [receiptsForBooking, setReceiptsForBooking] = useState<any[]>([])
+  const [receiptModal, setReceiptModal] = useState<{ mode: 'create' | 'view', receipt?: any } | null>(null)
+  const [selected, setSelected] = useState<any>(null)
+  const [showModal, setShowModal] = useState(false)
+  const [showSplitModal, setShowSplitModal] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [form, setForm] = useState({
+    amount_received: 0, amountTouched: false, method: 'transfer',
+    payment_status: 'ชำระเงินแล้ว', invoice_no: '',
+    worker_count: 0, price_per_worker: 0,
+    ref_no: '', note: '', bank_account_id: '',
+    use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
+    use_wht: false, // หัก ณ ที่จ่าย 3%
+    credit_used: 0, credit_toggle: false, keep_excess_credit: true,
+  })
 
-  const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,10) }
+  // ===== ตัดชำระหลายจอง =====
+  const [splitPayments, setSplitPayments] = useState<any[]>([])
+  const [splitSource, setSplitSource] = useState({ method: 'transfer', bank_account_id: '' })
+  const [splitSearch, setSplitSearch] = useState('')
+  const [splitDateFrom, setSplitDateFrom] = useState('')
+  const [splitDateTo, setSplitDateTo] = useState('')
+  const [splitTotalReceived, setSplitTotalReceived] = useState<number | ''>('')
+  const [splitSlipFile, setSplitSlipFile] = useState<File | null>(null)
+  const [splitLoading, setSplitLoading] = useState(false)
+  const [splitSaving, setSplitSaving] = useState(false)
+
+  const [slips, setSlips] = useState<any[]>([])
+
+  const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
+  const [search, setSearch] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState(getDefaultFrom())
-  const [filterDateTo, setFilterDateTo] = useState(new Date().toISOString().slice(0,10))
-  const [filterCustomer, setFilterCustomer] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterMethod, setFilterMethod] = useState('')
+  const [filterBookedMin, setFilterBookedMin] = useState('')
+  const [filterBookedMax, setFilterBookedMax] = useState('')
+  const [filterActualMin, setFilterActualMin] = useState('')
+  const [filterActualMax, setFilterActualMax] = useState('')
+  const [filterHasActual, setFilterHasActual] = useState('')
   const [filterSlip, setFilterSlip] = useState('')
 
-  if (ready && !loaded) { fetchReport(); setLoaded(true) }
+  if (ready && !loaded) { fetchBookings(); fetchBankAccounts(); fetchCompanySettings(); setLoaded(true) }
 
-  async function fetchReport() {
-    setLoading(true)
+  async function fetchCompanySettings() {
+    const { data } = await supabase.from('company_settings').select('*').limit(1).single()
+    setCompanySettings(data || null)
+  }
 
-    // ดึง bookings พร้อม payments แยก payment_slips ออก
-    // เพิ่ม wht_amount, credit_used เพื่อคำนวณ "ยอดที่ควรได้รับสุทธิ" ให้ถูกต้อง
+  async function fetchReceiptsForBooking(bookingId: string) {
+    const { data } = await supabase.from('receipts').select('*').eq('booking_id', bookingId).order('created_at', { ascending: false })
+    setReceiptsForBooking(data || [])
+  }
+
+  async function fetchBankAccounts() {
+    const { data } = await supabase.from('bank_accounts').select('*').eq('is_active', true).order('sort_order', { ascending: true })
+    setBankAccounts(data || [])
+  }
+
+  const getBankAccountLabel = (acc: any) => acc.account_name ? `${acc.bank_name} - ${acc.account_name}` : acc.bank_name
+
+  async function fetchBookings(dateFrom?: string, dateTo?: string) {
     let all: any[] = []
     let from = 0
+    const df = dateFrom ?? filterDateFrom
+    const dt = dateTo ?? filterDateTo
     while (true) {
       let q = supabase.from('bookings')
-        .select('id, case_number, booking_date, booked_count, location_name, customers(customer_name, type), medical_cases(actual_count), payments(id, total_amount, amount_received, payment_status, method, invoice_no, ref_no, wht_amount, credit_used, credit_deposited)')
+        .select('*, customers(customer_name, type, credit_limit, credit_balance, overpayment_balance), payments(*, bank_accounts(bank_name, account_name)), medical_cases(actual_count), special_exams(total_amount)')
         .order('booking_date', { ascending: false })
-      if (filterDateFrom) q = q.gte('booking_date', filterDateFrom)
-      if (filterDateTo) q = q.lte('booking_date', filterDateTo)
+      if (df) q = q.gte('booking_date', df)
+      if (dt) q = q.lte('booking_date', dt)
       const { data } = await q.range(from, from + 999)
       if (!data || data.length === 0) break
       all = [...all, ...data]
@@ -45,13 +97,11 @@ export default function FinanceReport() {
       from += 1000
     }
 
-    // ดึง payment_slips แยก เพื่อหลีกเลี่ยงปัญหา nested join
+    // ดึงข้อมูลสลิปแยก ผูกกับแต่ละ booking ผ่าน payment_id เพื่อโชว์สถานะแนบสลิป/ยังไม่แนบในตารางหลัก
     const paymentIds = all.flatMap((b: any) => {
-      const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
+      const p = getP(b)
       return p?.id ? [p.id] : []
     })
-
-    const slipSet = new Set<string>()
     const slipCountMap: any = {}
     if (paymentIds.length > 0) {
       const { data: slipsData } = await supabase
@@ -59,189 +109,469 @@ export default function FinanceReport() {
         .select('payment_id')
         .in('payment_id', paymentIds)
       slipsData?.forEach((s: any) => {
-        slipSet.add(s.payment_id)
         slipCountMap[s.payment_id] = (slipCountMap[s.payment_id] || 0) + 1
       })
     }
-
-    // แปลงข้อมูลและคำนวณ
-    const mapped = all.map((b: any) => {
-      const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
-      const p = Array.isArray(b.payments) ? b.payments?.[0] : b.payments
-      const total = p?.total_amount || 0
-      const received = p?.amount_received || 0
-      const whtAmount = p?.wht_amount || 0
-      const creditUsed = p?.credit_used || 0
-      // ยอดที่ควรได้รับสุทธิ = ยอดรวม - หัก ณ ที่จ่าย - เครดิตที่นำมาหัก (ทั้งสองอย่างนี้ไม่ใช่เงินสดที่ต้องรับ)
-      const netExpected = Math.max(Math.round((total - whtAmount - creditUsed) * 100) / 100, 0)
-      const diff = Math.round((received - netExpected) * 100) / 100
-      const status = p?.payment_status || 'ยังไม่ชำระ'
-      const hasSlip = p?.id ? slipSet.has(p.id) : false
+    all = all.map((b: any) => {
+      const p = getP(b)
       const slipCount = p?.id ? (slipCountMap[p.id] || 0) : 0
-
-      let payType = 'ยังไม่ชำระ'
-      if (status === 'ชำระเงินแล้ว') {
-        if (diff > 0.01) payType = 'ชำระเกิน'
-        else if (diff < -0.01) payType = 'ชำระขาด'
-        else payType = 'ชำระครบ'
-      } else if (status === 'เครดิต') payType = 'เครดิต'
-      else if (status === 'ค้างชำระ') payType = 'ค้างชำระ'
-
-      return {
-        id: b.id,
-        case_number: b.case_number,
-        booking_date: b.booking_date,
-        customer_name: b.customers?.customer_name || '-',
-        location_name: b.location_name || '-',
-        actual_count: mc?.actual_count || b.booked_count || 0,
-        total_amount: total,
-        wht_amount: whtAmount,
-        credit_used: creditUsed,
-        net_expected: netExpected,
-        amount_received: received,
-        diff,
-        payment_status: status,
-        pay_type: payType,
-        method: p?.method || '-',
-        invoice_no: p?.invoice_no || '-',
-        ref_no: p?.ref_no || '-',
-        has_slip: hasSlip,
-        slip_count: slipCount,
-      }
+      return { ...b, _slipCount: slipCount, _hasSlip: slipCount > 0 }
     })
 
-    setRows(mapped)
-    setLoading(false)
+    setBookings(all)
   }
 
-  const handleSearch = () => { setLoaded(false) }
+  const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
-  const filtered = rows.filter(r => {
-    if (filterCustomer && !r.customer_name.includes(filterCustomer)) return false
-    if (filterStatus && r.pay_type !== filterStatus) return false
-    if (filterSlip === 'มี' && !r.has_slip) return false
-    if (filterSlip === 'ไม่มี' && r.has_slip) return false
+  // รองรับทั้ง 2 กรณี: payments เป็น array (ปกติเวลามีได้หลายแถว) หรือเป็น object เดี่ยว
+  // (Supabase จะส่งมาเป็น object เดี่ยวถ้า column booking_id มี UNIQUE constraint ผูกอยู่)
+  const getP = (b: any) => Array.isArray(b?.payments) ? b.payments?.[0] : b?.payments
+
+  const getSpecialTotal = (b: any) => {
+    return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
+  }
+
+  // ค่าข้าวไฟล์ทบิน = ราคา/มื้อ x จำนวนมื้อ x จำนวนคนที่จอง (เก็บอยู่บนตาราง bookings โดยตรง)
+  // สำคัญ: ค่าข้าวนี้ไม่คิด VAT และไม่เป็นฐานคำนวณหัก ณ ที่จ่าย เด็ดขาด — คำนวณแยกจากยอดตรวจเสมอ
+  const getMealTotal = (b: any) => {
+    return (b.meal_price || 0) * (b.meal_count || 0) * (b.booked_count || 0)
+  }
+
+  const getNormalTotalWithVat = (p: any) => {
+    const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
+    if (!p?.use_vat) return workerTotal
+    if (p.vat_mode === 'inclusive') return workerTotal // ราคารวม VAT แล้ว ไม่บวกซ้ำ
+    return Math.round(workerTotal * 1.07 * 100) / 100 // ราคา + VAT บวกเพิ่ม
+  }
+
+  const getGrandTotal = (b: any) => {
+    const p = getP(b)
+    const normalWithVat = getNormalTotalWithVat(p)
+    const specialTotal = getSpecialTotal(b)
+    const mealTotal = getMealTotal(b) // ไม่ผ่าน VAT
+    return Math.round((normalWithVat + specialTotal + mealTotal) * 100) / 100
+  }
+
+  const fetchSlips = async (paymentId: string) => {
+    const { data } = await supabase.from('payment_slips').select('*').eq('payment_id', paymentId).order('created_at', { ascending: false })
+    setSlips(data || [])
+  }
+
+  const handleOpenModal = (booking: any) => {
+    setSelected(booking)
+    const p = getP(booking)
+    const mc = getMc(booking)
+    const actualCount = mc?.actual_count || booking.booked_count || 0
+    setForm({
+      amount_received: p?.amount_received ?? 0,
+      amountTouched: p?.id ? true : false, // ถ้าเคยบันทึกแล้ว ถือว่าค่านี้คือค่าจริงที่กรอกมา ไม่ใช่ default
+      method: p?.method || 'transfer',
+      payment_status: p?.payment_status || 'ยังไม่ชำระ',
+      invoice_no: p?.invoice_no || '',
+      // สำคัญ: ถ้ามีจำนวนตรวจจริงบันทึกไว้แล้ว (actual_count > 0) ต้องอิงจากตรวจจริงเสมอ
+      // แม้ว่าจะเคยบันทึกยอดเงินไปแล้วด้วยตัวเลขเก่า (เช่น ตอนที่ยังอิงจากยอดจองเพราะยังไม่มีตรวจจริง)
+      // ถ้ายังไม่มีตรวจจริงเลย (จองล่วงหน้า ยังไม่ถึงวันตรวจ) ค่อย fallback ไปใช้ค่าที่เคยบันทึกไว้ หรือยอดจอง
+      worker_count: (mc?.actual_count && mc.actual_count > 0) ? mc.actual_count : (p?.worker_count || actualCount),
+      price_per_worker: p?.price_per_worker || 0,
+      ref_no: p?.ref_no || '',
+      note: p?.note || '',
+      bank_account_id: p?.bank_account_id || '',
+      use_vat: p?.use_vat || false,
+      vat_mode: p?.vat_mode || 'exclusive',
+      use_wht: p?.use_wht || false,
+      credit_used: p?.credit_used || 0,
+      credit_toggle: (p?.credit_used || 0) > 0,
+      keep_excess_credit: true,
+    })
+    if (p?.id) fetchSlips(p.id)
+    else setSlips([])
+    fetchReceiptsForBooking(booking.id)
+    setShowModal(true)
+  }
+
+  const normalTotal = form.worker_count * form.price_per_worker
+  const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
+  const mealAmountSelected = selected ? getMealTotal(selected) : 0
+  // VAT คิดจากยอดตรวจสุขภาพปกติ (normalTotal) เท่านั้น — ค่าข้าวและตรวจพิเศษไม่รวมในฐาน VAT
+  const vatBase = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? normalTotal / 1.07 : normalTotal)
+    : normalTotal
+  const vatAmount = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? normalTotal - vatBase : normalTotal * 0.07)
+    : 0
+  const normalTotalWithVat = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? normalTotal : normalTotal + vatAmount)
+    : normalTotal
+  const grandTotalSelected = normalTotalWithVat + specialAmountSelected + mealAmountSelected
+
+  // หัก ณ ที่จ่าย 3% — คิดจากฐานเดียวกับ VAT (ยอดตรวจก่อน VAT) เท่านั้น ไม่รวมค่าข้าว/ตรวจพิเศษ
+  const whtAmount = form.use_wht ? Math.round(vatBase * 0.03 * 100) / 100 : 0
+
+  // ===== ยอดเครดิตสะสม (จากการโอนเกินครั้งก่อน) =====
+  const selectedPayment = getP(selected)
+  const prevCreditUsed = selectedPayment?.credit_used || 0
+  const prevCreditDeposited = selectedPayment?.credit_deposited || 0
+  const creditAvailableRaw = selected?.customers?.overpayment_balance || 0
+  // ยอดสูงสุดที่หักได้ = เครดิตที่เหลือ + เครดิตที่ payment นี้เคยหักไปแล้ว (เผื่อแก้ไขซ้ำ) แต่ไม่เกินยอดที่ต้องจ่าย
+  const maxUsableCredit = Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
+  const creditUsed = form.credit_toggle ? Math.min(form.credit_used || 0, maxUsableCredit) : 0
+  const netDue = Math.max(Math.round((grandTotalSelected - creditUsed - whtAmount) * 100) / 100, 0)
+  const actualReceived = form.amountTouched ? form.amount_received : netDue
+  const excess = form.amountTouched ? Math.max(Math.round((actualReceived - netDue) * 100) / 100, 0) : 0
+  const creditDeposited = (excess > 0 && form.keep_excess_credit) ? excess : 0
+
+  const handleSave = async () => {
+    // กันกดปุ่มซ้ำ (double-click) ซึ่งเคยทำให้เกิด payment ซ้ำ 2 แถวสำหรับจองเดียวกัน
+    if (savingPayment) return
+    setSavingPayment(true)
+    const p = getP(selected)
+    const payload = {
+      amount_received: actualReceived,
+      method: form.method,
+      payment_status: form.payment_status,
+      invoice_no: form.invoice_no,
+      worker_count: form.worker_count,
+      price_per_worker: form.price_per_worker,
+      total_amount: grandTotalSelected,
+      ref_no: form.ref_no,
+      note: form.note,
+      bank_account_id: form.method === 'transfer' ? (form.bank_account_id || null) : null,
+      use_vat: form.use_vat,
+      vat_mode: form.vat_mode,
+      use_wht: form.use_wht,
+      wht_amount: whtAmount,
+      credit_used: creditUsed,
+      credit_deposited: creditDeposited,
+      paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
+    }
+    let paymentId = p?.id
+    if (p?.id) {
+      await supabase.from('payments').update(payload).eq('id', p.id)
+    } else {
+      const { data: inserted } = await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }]).select().single()
+      paymentId = inserted?.id
+    }
+
+    // ปรับยอดเครดิตสะสมของลูกค้า เฉพาะส่วนต่างจากค่าที่เคยบันทึกไว้ก่อนหน้า (กันนับซ้ำเวลาแก้ไขรายการเดิม)
+    const creditUsedDelta = Math.round((creditUsed - prevCreditUsed) * 100) / 100
+    const creditDepositedDelta = Math.round((creditDeposited - prevCreditDeposited) * 100) / 100
+    const balanceDelta = Math.round((creditDepositedDelta - creditUsedDelta) * 100) / 100
+    if (balanceDelta !== 0 && selected.customer_id) {
+      await supabase.rpc('adjust_customer_credit', { p_customer_id: selected.customer_id, p_delta: balanceDelta })
+    }
+    if (creditUsedDelta !== 0 && paymentId) {
+      await supabase.from('customer_credit_ledger').insert([{
+        customer_id: selected.customer_id, booking_id: selected.id, payment_id: paymentId,
+        type: creditUsedDelta > 0 ? 'use' : 'deposit',
+        amount: Math.abs(creditUsedDelta),
+        note: creditUsedDelta > 0 ? 'นำเครดิตไปหักยอดจองนี้' : 'ยกเลิก/ลดยอดที่เคยหักเครดิตไว้กับจองนี้',
+      }])
+    }
+    if (creditDepositedDelta !== 0 && paymentId) {
+      await supabase.from('customer_credit_ledger').insert([{
+        customer_id: selected.customer_id, booking_id: selected.id, payment_id: paymentId,
+        type: creditDepositedDelta > 0 ? 'deposit' : 'use',
+        amount: Math.abs(creditDepositedDelta),
+        note: creditDepositedDelta > 0 ? 'รับชำระเกินจากจองนี้ เก็บไว้เป็นเครดิต' : 'ยกเลิก/ลดยอดเครดิตที่เคยเก็บไว้จากจองนี้',
+      }])
+    }
+
+    if (paymentId) fetchSlips(paymentId)
+    fetchBookings()
+    setSavingPayment(false)
+  }
+
+  // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
+  // (แทนที่การอัปโหลดขึ้น Supabase Storage โดยตรงแบบเดิม)
+  const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
+    try {
+      // 1. ขอ "ลิงก์อัปโหลดชั่วคราว" จาก backend ก่อน (ส่งแค่ชื่อไฟล์ ไม่ใช่ตัวไฟล์ ไม่มีทางติด limit ของ Vercel)
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, folder, contentType: file.type || 'application/octet-stream' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error('ขอลิงก์อัปโหลดไม่สำเร็จ:', err)
+        return null
+      }
+      const { uploadUrl, publicUrl, fileName } = await res.json()
+
+      // 2. อัปโหลดไฟล์จริง "ตรงไปที่ Google Cloud Storage เลย" ไม่ผ่าน Vercel อีกต่อไป
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        console.error('อัปโหลดไป GCS ไม่สำเร็จ:', uploadRes.status)
+        return null
+      }
+
+      return { url: publicUrl, fileName }
+    } catch (err) {
+      console.error('อัปโหลดไม่สำเร็จ:', err)
+      return null
+    }
+  }
+
+  // อัพโหลดได้ทีละหลายไฟล์ ถ้ายังไม่มี payment ให้สร้างก่อนแบบเงียบๆ
+  const handleUploadSlip = async (e: any) => {
+    const files: File[] = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setUploading(true)
+
+    let paymentId = getP(selected)?.id
+    if (!paymentId) {
+      const { data: inserted } = await supabase
+        .from('payments')
+        .insert([{ booking_id: selected.id, customer_id: selected.customer_id, payment_status: 'ยังไม่ชำระ' }])
+        .select().single()
+      paymentId = inserted?.id
+    }
+
+    for (const file of files) {
+      const uploaded = await uploadFileToGCS(file, 'payment_slips')
+      if (uploaded) {
+        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: uploaded.fileName, storage_url: uploaded.url }])
+      }
+    }
+    await supabase.from('payments').update({ is_verified: true }).eq('id', paymentId)
+    if (paymentId) fetchSlips(paymentId)
+    fetchBookings()
+    setUploading(false)
+  }
+
+  const handleDeleteSlip = async (slipId: string) => {
+    await supabase.from('payment_slips').delete().eq('id', slipId)
+    const paymentId = getP(selected)?.id
+    if (paymentId) fetchSlips(paymentId)
+  }
+
+  // ===== เปิด modal ตัดชำระหลายจอง =====
+  // ดึงข้อมูลจองที่ยังไม่ชำระ "ทั้งหมด" ใหม่ทุกครั้ง (ไม่ผูกกับตัวกรองวันที่ของหน้าหลัก)
+  // เพื่อให้ค้นหาลูกค้าที่จองไว้นานแล้วเจอด้วย
+  const openSplitModal = async () => {
+    setSplitLoading(true)
+    let all: any[] = []
+    let from = 0
+    while (true) {
+      const { data } = await supabase.from('bookings')
+        .select('id, case_number, booking_date, customer_id, meal_price, meal_count, booked_count, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount)')
+        .order('booking_date', { ascending: false })
+        .range(from, from + 999)
+      if (!data || data.length === 0) break
+      all = [...all, ...data]
+      if (data.length < 1000) break
+      from += 1000
+    }
+    const unpaidBookings = all.filter((b: any) => {
+      const p = getP(b)
+      return !p || p.payment_status !== 'ชำระเงินแล้ว'
+    })
+    setSplitPayments(unpaidBookings.map((b: any) => ({
+      booking_id: b.id,
+      customer_id: b.customer_id,
+      existing_payment_id: getP(b)?.id || null,
+      case_number: b.case_number,
+      customer_name: b.customers?.customer_name,
+      booking_date: b.booking_date,
+      grand_total: getGrandTotal(b),
+      amount: 0,
+      selected: false,
+    })))
+    setSplitSource({ method: 'transfer', bank_account_id: '' })
+    setSplitSearch(''); setSplitDateFrom(''); setSplitDateTo('')
+    setSplitTotalReceived(''); setSplitSlipFile(null)
+    setSplitLoading(false)
+    setShowSplitModal(true)
+  }
+
+  // แก้ไขรายการทีละตัวโดยอ้างอิงจาก booking_id (ไม่ใช้ index) เพราะรายการที่แสดงอาจถูกกรองอยู่
+  const updateSplitItem = (bookingId: string, patch: any) => {
+    setSplitPayments(prev => prev.map(sp => sp.booking_id === bookingId ? { ...sp, ...patch } : sp))
+  }
+
+  // รายการที่แสดงผลหลังกรองด้วยชื่อลูกค้า/เลขจอง และช่วงวันที่
+  const filteredSplitPayments = splitPayments.filter((sp) => {
+    if (splitSearch && !(sp.customer_name || '').includes(splitSearch) && !(sp.case_number || '').includes(splitSearch)) return false
+    if (splitDateFrom && sp.booking_date < splitDateFrom) return false
+    if (splitDateTo && sp.booking_date > splitDateTo) return false
     return true
   })
 
-  const summary = {
-    total: filtered.length,
-    totalAmount: filtered.reduce((s, r) => s + r.total_amount, 0),
-    netExpectedTotal: filtered.reduce((s, r) => s + r.net_expected, 0),
-    totalReceived: filtered.reduce((s, r) => s + r.amount_received, 0),
-    totalWht: filtered.reduce((s, r) => s + r.wht_amount, 0),
-    totalCreditUsed: filtered.reduce((s, r) => s + r.credit_used, 0),
-    paid: filtered.filter(r => r.pay_type === 'ชำระครบ').length,
-    paidAmount: filtered.filter(r => r.pay_type === 'ชำระครบ').reduce((s, r) => s + r.amount_received, 0),
-    unpaid: filtered.filter(r => r.pay_type === 'ยังไม่ชำระ' || r.pay_type === 'ค้างชำระ').length,
-    unpaidAmount: filtered.filter(r => r.pay_type === 'ยังไม่ชำระ' || r.pay_type === 'ค้างชำระ').reduce((s, r) => s + r.total_amount, 0),
-    credit: filtered.filter(r => r.pay_type === 'เครดิต').length,
-    creditAmount: filtered.filter(r => r.pay_type === 'เครดิต').reduce((s, r) => s + (r.total_amount - r.amount_received), 0),
-    over: filtered.filter(r => r.pay_type === 'ชำระเกิน').length,
-    overAmount: filtered.filter(r => r.pay_type === 'ชำระเกิน').reduce((s, r) => s + r.diff, 0),
-    under: filtered.filter(r => r.pay_type === 'ชำระขาด').length,
-    underAmount: filtered.filter(r => r.pay_type === 'ชำระขาด').reduce((s, r) => s + Math.abs(r.diff), 0),
-    hasSlip: filtered.filter(r => r.has_slip).length,
-    noSlip: filtered.filter(r => !r.has_slip).length,
+  // แบ่งยอดที่โอนมาทั้งก้อน ไปตัดตามรายการที่ติ๊กเลือกไว้ เรียงจากบนลงล่าง จนกว่ายอดจะหมด
+  const autoDistributeSplit = () => {
+    let remaining = Number(splitTotalReceived) || 0
+    setSplitPayments(prev => prev.map(sp => {
+      if (!sp.selected) return { ...sp, amount: 0 }
+      const due = sp.grand_total > 0 ? sp.grand_total : 0
+      const cut = Math.max(0, Math.min(remaining, due))
+      remaining = Math.round((remaining - cut) * 100) / 100
+      return { ...sp, amount: cut }
+    }))
   }
 
-  const payTypeColor: any = {
-    'ชำระครบ': 'bg-green-50 text-green-700',
-    'ชำระเกิน': 'bg-blue-50 text-blue-700',
-    'ชำระขาด': 'bg-orange-50 text-orange-700',
-    'ยังไม่ชำระ': 'bg-gray-100 text-gray-500',
-    'ค้างชำระ': 'bg-red-50 text-red-600',
-    'เครดิต': 'bg-amber-50 text-amber-600',
+  const handleSplitSave = async () => {
+    const selectedItems = splitPayments.filter(s => s.selected && s.amount > 0)
+    if (selectedItems.length === 0) return
+    setSplitSaving(true)
+
+    // อัพโหลดสลิปครั้งเดียว แล้วผูกกับทุกรายการที่เลือก
+    let slipUrl: string | null = null
+    let slipFileName: string | null = null
+    if (splitSlipFile) {
+      const uploaded = await uploadFileToGCS(splitSlipFile, 'payment_slips')
+      if (uploaded) {
+        slipUrl = uploaded.url
+        slipFileName = uploaded.fileName
+      }
+    }
+
+    for (const item of selectedItems) {
+      const payload = {
+        booking_id: item.booking_id,
+        customer_id: item.customer_id,
+        amount_received: item.amount,
+        method: splitSource.method,
+        bank_account_id: splitSource.method === 'transfer' ? (splitSource.bank_account_id || null) : null,
+        payment_status: 'ชำระเงินแล้ว',
+        paid_at: new Date().toISOString(),
+        is_verified: !!slipUrl,
+      }
+      let paymentId = item.existing_payment_id
+      if (paymentId) {
+        await supabase.from('payments').update(payload).eq('id', paymentId)
+      } else {
+        const { data: inserted } = await supabase.from('payments').insert([payload]).select().single()
+        paymentId = inserted?.id
+      }
+      if (slipUrl && paymentId) {
+        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: slipFileName, storage_url: slipUrl }])
+      }
+    }
+    fetchBookings()
+    setShowSplitModal(false)
+    setSplitSaving(false)
   }
+
+  const splitTotal = splitPayments.filter(s => s.selected).reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+  const splitUnallocated = Math.round(((Number(splitTotalReceived) || 0) - splitTotal) * 100) / 100
+
+  const getPaymentStatus = (booking: any) => {
+    const p = getP(booking)
+    if (!p) return { label: 'ยังไม่ชำระ', color: 'bg-gray-100 text-gray-500' }
+    const map: any = {
+      'ชำระเงินแล้ว': 'bg-green-100 text-green-700',
+      'ยังไม่ชำระ': 'bg-gray-100 text-gray-500',
+      'ค้างชำระ': 'bg-red-100 text-red-600',
+      'เครดิต': 'bg-amber-100 text-amber-600',
+    }
+    return { label: p.payment_status, color: map[p.payment_status] || 'bg-gray-100 text-gray-500' }
+  }
+
+  const filtered = bookings.filter(b => {
+    const p = getP(b)
+    const mc = getMc(b)
+    const status = getPaymentStatus(b)
+    if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
+    if (filterDateFrom && b.booking_date < filterDateFrom) return false
+    if (filterDateTo && b.booking_date > filterDateTo) return false
+    if (filterStatus && status.label !== filterStatus) return false
+    if (filterMethod && p?.method !== filterMethod) return false
+    if (filterBookedMin && b.booked_count < Number(filterBookedMin)) return false
+    if (filterBookedMax && b.booked_count > Number(filterBookedMax)) return false
+    if (filterActualMin && (mc?.actual_count ?? -1) < Number(filterActualMin)) return false
+    if (filterActualMax && (mc?.actual_count ?? 99999) > Number(filterActualMax)) return false
+    if (filterHasActual === 'มี' && !(mc?.actual_count > 0)) return false
+    if (filterHasActual === 'ไม่มี' && mc?.actual_count > 0) return false
+    if (filterSlip === 'มี' && !b._hasSlip) return false
+    if (filterSlip === 'ไม่มี' && b._hasSlip) return false
+    return true
+  })
 
   const exportExcel = () => {
-    const exRows = filtered.map(r => ({
-      'เลขจอง': r.case_number, 'วันที่': r.booking_date,
-      'ลูกค้า': r.customer_name, 'สถานที่': r.location_name,
-      'จำนวน (คน)': r.actual_count, 'ยอดรวม (บาท)': r.total_amount,
-      'หัก ณ ที่จ่าย': r.wht_amount, 'เครดิตที่ใช้หัก': r.credit_used,
-      'ยอดที่ควรได้รับสุทธิ': r.net_expected,
-      'รับชำระจริง (บาท)': r.amount_received, 'ส่วนต่าง': r.diff,
-      'สถานะ': r.pay_type, 'วิธีชำระ': r.method,
-      'เลขใบวางบิล': r.invoice_no, 'เลขอ้างอิง': r.ref_no,
-      'แนบสลิป': r.has_slip ? `มี (${r.slip_count} ไฟล์)` : 'ไม่มี',
-    }))
-    const ws = XLSX.utils.json_to_sheet(exRows)
+    const rows = filtered.map(b => {
+      const p = getP(b)
+      const mc = getMc(b)
+      const specialAmt = getSpecialTotal(b)
+      const mealAmt = getMealTotal(b)
+      const grandTotal = getGrandTotal(b)
+      return {
+        'เลขจอง': b.case_number,
+        'ลูกค้า': b.customers?.customer_name,
+        'วันที่': b.booking_date,
+        'จำนวนแรงงาน': p?.worker_count || mc?.actual_count || 0,
+        'ราคา/คน': p?.price_per_worker || 0,
+        'ยอดปกติ': (p?.worker_count || 0) * (p?.price_per_worker || 0),
+        'ยอดตรวจพิเศษ': specialAmt,
+        'ค่าข้าวไฟล์ทบิน': mealAmt,
+        'ยอดรวม': grandTotal,
+        'หัก ณ ที่จ่าย 3%': p?.wht_amount || 0,
+        'ยอดรับ': p?.amount_received || 0,
+        'วิธีชำระ': p?.method || '',
+        'บัญชีธนาคาร': p?.bank_accounts ? getBankAccountLabel(p.bank_accounts) : '',
+        'เครดิตที่ใช้หัก': p?.credit_used || 0,
+        'เครดิตที่เก็บไว้(เกินมา)': p?.credit_deposited || 0,
+        'เครดิตคงเหลือลูกค้า': b.customers?.overpayment_balance || 0,
+        'แนบสลิป': b._hasSlip ? `มี (${b._slipCount} ไฟล์)` : 'ยังไม่แนบ',
+        'สถานะ': getPaymentStatus(b).label,
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Finance Report')
-    XLSX.writeFile(wb, `finance_report_${filterDateFrom}_${filterDateTo}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'Payments')
+    XLSX.writeFile(wb, `payments_${new Date().toISOString().slice(0,10)}.xlsx`)
+  }
+
+  const clearFilters = () => {
+    setSearch(''); setFilterDateFrom(getDefaultFrom()); setFilterDateTo(''); setFilterStatus(''); setFilterMethod('')
+    setFilterBookedMin(''); setFilterBookedMax('')
+    setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual(''); setFilterSlip('')
+    fetchBookings(getDefaultFrom(), '')
   }
 
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
     <div className="flex min-h-screen bg-[#F1F5F9]">
-      <Sidebar user={user} role={role} currentPath="/finance-report" onLogout={logout} />
+      <Sidebar user={user} role={role} currentPath="/payments" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
-        <div className="flex justify-between items-center mb-5">
+
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <p className="text-base font-semibold text-gray-800">Report การเงิน</p>
-            <p className="text-xs text-gray-400 mt-0.5">{filterDateFrom} — {filterDateTo}</p>
+            <p className="text-base font-semibold text-gray-800">การเงิน</p>
+            <p className="text-xs text-gray-400 mt-0.5">สถานะการชำระเงินทั้งหมด</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
-              <IconDownload size={15}/> Export Excel
+            <button onClick={() => setShowCompanySettings(true)} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
+              <IconSettings size={15}/> ตั้งค่าบริษัท
             </button>
-            <button onClick={handleSearch} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
-              <IconRefresh size={15}/> โหลดใหม่
+            <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
+              <IconDownload size={15}/> Export
+            </button>
+            <button onClick={openSplitModal} className="border border-[#185FA5] text-[#185FA5] px-4 py-2 rounded-lg text-sm hover:bg-blue-50 flex items-center gap-2 transition-colors">
+              <IconPlus size={15}/> ตัดชำระหลายจอง
             </button>
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm mb-4">
-          <div className="grid grid-cols-6 gap-3">
-            {[
-              { label: 'รายการทั้งหมด', value: summary.total, amount: summary.totalAmount, color: 'text-gray-800' },
-              { label: 'ชำระครบ', value: summary.paid, amount: summary.paidAmount, color: 'text-green-600' },
-              { label: 'ยังไม่ชำระ/ค้าง', value: summary.unpaid, amount: summary.unpaidAmount, color: 'text-red-500' },
-              { label: 'เครดิต (ค้าง)', value: summary.credit, amount: summary.creditAmount, color: 'text-amber-500' },
-              { label: 'ชำระเกิน', value: summary.over, amount: summary.overAmount, color: 'text-blue-500', prefix: '+' },
-              { label: 'ชำระขาด', value: summary.under, amount: summary.underAmount, color: 'text-orange-500', prefix: '-' },
-            ].map((s, i) => (
-              <div key={i} className={`text-center ${i > 0 ? 'border-l border-gray-100' : ''}`}>
-                <p className="text-xs text-gray-400 mb-1">{s.label}</p>
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                <p className={`text-xs mt-0.5 ${s.color}`}>{s.prefix || ''}฿{fmt(s.amount)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* หัก ณ ที่จ่าย / เครดิต Summary */}
-        {(summary.totalWht > 0 || summary.totalCreditUsed > 0) && (
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 flex justify-between items-center">
-              <span className="text-sm text-rose-600">💸 หัก ณ ที่จ่าย 3% รวม</span>
-              <span className="text-lg font-bold text-rose-600">฿{fmt(summary.totalWht)}</span>
-            </div>
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex justify-between items-center">
-              <span className="text-sm text-emerald-600">💚 เครดิตที่ใช้หักยอดรวม</span>
-              <span className="text-lg font-bold text-emerald-600">฿{fmt(summary.totalCreditUsed)}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Slip Summary */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex justify-between items-center">
-            <span className="text-sm text-gray-600">📎 แนบสลิปแล้ว</span>
-            <span className="text-lg font-bold text-green-600">{summary.hasSlip} รายการ</span>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex justify-between items-center">
-            <span className="text-sm text-gray-600">⚠️ ยังไม่แนบสลิป</span>
-            <span className="text-lg font-bold text-red-500">{summary.noSlip} รายการ</span>
-          </div>
-        </div>
-
-        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
-          <div className="grid grid-cols-5 gap-3">
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-1">
+              <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
+              <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchBookings()}
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <button onClick={() => fetchBookings()}
+              className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] transition-colors flex-shrink-0">
+              ค้นหา
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
@@ -253,26 +583,54 @@ export default function FinanceReport() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">ลูกค้า</label>
-              <div className="relative">
-                <IconSearch size={13} className="absolute left-2.5 top-2 text-gray-400"/>
-                <input value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)}
-                  placeholder="ค้นหาลูกค้า..."
-                  className="w-full pl-7 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">สถานะการชำระ</label>
+              <label className="text-xs text-gray-400 mb-1 block">สถานะ</label>
               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
                 <option value="">ทั้งหมด</option>
-                <option value="ชำระครบ">ชำระครบ</option>
-                <option value="ชำระเกิน">ชำระเกิน</option>
-                <option value="ชำระขาด">ชำระขาด</option>
-                <option value="ยังไม่ชำระ">ยังไม่ชำระ</option>
-                <option value="ค้างชำระ">ค้างชำระ</option>
-                <option value="เครดิต">เครดิต</option>
+                <option>ชำระเงินแล้ว</option><option>ยังไม่ชำระ</option>
+                <option>ค้างชำระ</option><option>เครดิต</option>
               </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วิธีชำระ</label>
+              <select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="transfer">โอนเงิน</option>
+                <option value="cash">เงินสด</option>
+                <option value="credit">เครดิต</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
+              <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
+              <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
+              <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">มีแล้ว</option>
+                <option value="ไม่มี">ยังไม่มี</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
+              <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
+              <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สลิป</label>
@@ -284,76 +642,560 @@ export default function FinanceReport() {
               </select>
             </div>
           </div>
-          <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
-            <p className="text-xs text-gray-400">{loading ? 'กำลังโหลด...' : `แสดง ${filtered.length} จาก ${rows.length} รายการ`}</p>
-            <button onClick={() => { setFilterCustomer(''); setFilterStatus(''); setFilterSlip('') }}
-              className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+          <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
+            <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
+            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-11 gap-2 px-4 py-2.5 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
-            <span className="col-span-2">เลขจอง / วันที่</span>
-            <span className="col-span-2">ลูกค้า / สถานที่</span>
-            <span>จำนวน</span>
-            <span>ยอดรวม</span>
-            <span>ยอดสุทธิที่ควรได้</span>
-            <span>รับจริง</span>
-            <span>ส่วนต่าง</span>
-            <span>สถานะ</span>
-            <span>สลิป</span>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex justify-between items-center">
+            <span className="text-sm text-gray-600">📎 แนบสลิปแล้ว</span>
+            <span className="text-lg font-bold text-green-600">{filtered.filter(b => b._hasSlip).length} รายการ</span>
           </div>
-          {loading ? (
-            <div className="p-8 text-center text-sm text-gray-400">กำลังโหลด...</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ — ลองกดปุ่ม "โหลดใหม่"</div>
-          ) : filtered.map((r, i) => (
-            <div key={r.id} className={`grid grid-cols-11 gap-2 px-4 py-3 border-b border-gray-50 text-xs hover:bg-blue-50/20 items-center ${i % 2 !== 0 ? 'bg-gray-50/30' : ''}`}>
-              <div className="col-span-2">
-                <p className="font-mono text-gray-500">{r.case_number}</p>
-                <p className="text-gray-400">{r.booking_date}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="font-medium text-gray-700 truncate">{r.customer_name}</p>
-                <p className="text-gray-400 truncate">{r.location_name}</p>
-              </div>
-              <span className="text-gray-600">{r.actual_count} คน</span>
-              <span className="font-medium text-gray-700">{r.total_amount > 0 ? `฿${fmt(r.total_amount)}` : '-'}</span>
-              <div>
-                <span className="font-medium text-gray-700">{r.net_expected > 0 ? `฿${fmt(r.net_expected)}` : '-'}</span>
-                {(r.wht_amount > 0 || r.credit_used > 0) && (
-                  <p className="text-gray-400 mt-0.5">
-                    {r.wht_amount > 0 && <span>หัก ณ ที่จ่าย ฿{fmt(r.wht_amount)} </span>}
-                    {r.credit_used > 0 && <span>เครดิต ฿{fmt(r.credit_used)}</span>}
-                  </p>
-                )}
-              </div>
-              <span className={r.amount_received > 0 ? 'font-medium text-green-600' : 'text-gray-300'}>{r.amount_received > 0 ? `฿${fmt(r.amount_received)}` : '-'}</span>
-              <span className={r.diff > 0.01 ? 'text-blue-600 font-medium' : r.diff < -0.01 ? 'text-orange-500 font-medium' : 'text-gray-300'}>
-                {Math.abs(r.diff) > 0.01 ? `${r.diff > 0 ? '+' : ''}฿${fmt(r.diff)}` : '-'}
-              </span>
-              <span><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payTypeColor[r.pay_type] || 'bg-gray-100 text-gray-500'}`}>{r.pay_type}</span></span>
-              <span>{r.has_slip ? <span className="text-green-600 font-medium">📎 {r.slip_count}</span> : <span className="text-gray-300">ไม่มี</span>}</span>
+          <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex justify-between items-center">
+            <span className="text-sm text-gray-600">⚠️ ยังไม่แนบสลิป</span>
+            <span className="text-lg font-bold text-amber-500">{filtered.filter(b => !b._hasSlip).length} รายการ</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+          <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+            <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
+            <span>แรงงาน</span><span>ราคา/คน</span><span>ยอดปกติ</span>
+            <span>พิเศษ/ข้าว/รวม</span><span>รับชำระจริง</span><span>สถานะ</span><span>สลิป</span><span></span>
+          </div>
+          {filtered.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-gray-300 text-4xl mb-2">💰</p>
+              <p className="text-sm text-gray-400">ไม่พบรายการ</p>
             </div>
-          ))}
-          {filtered.length > 0 && (
-            <div className="grid grid-cols-11 gap-2 px-4 py-3 bg-gray-800 text-xs font-bold text-white rounded-b-xl">
-              <div className="col-span-2">รวม {filtered.length} รายการ</div>
-              <div className="col-span-2"></div>
-              <span></span>
-              <span>฿{fmt(summary.totalAmount)}</span>
-              <span>฿{fmt(summary.netExpectedTotal)}</span>
-              <span className="text-green-400">฿{fmt(summary.totalReceived)}</span>
-              <span className={(summary.totalReceived - summary.netExpectedTotal) > 0.01 ? 'text-blue-400' : (summary.totalReceived - summary.netExpectedTotal) < -0.01 ? 'text-orange-400' : 'text-gray-400'}>
-                {Math.abs(summary.totalReceived - summary.netExpectedTotal) > 0.01 ? `${(summary.totalReceived - summary.netExpectedTotal) > 0 ? '+' : ''}฿${fmt(summary.totalReceived - summary.netExpectedTotal)}` : '-'}
-              </span>
-              <span></span>
-              <span className="text-green-400">{summary.hasSlip}/{filtered.length}</span>
-            </div>
-          )}
+          ) : filtered.map((b) => {
+            const status = getPaymentStatus(b)
+            const p = getP(b)
+            const mc = getMc(b)
+            const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
+            const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
+            const specialAmt = getSpecialTotal(b)
+            const mealAmt = getMealTotal(b)
+            const grandTotal = getGrandTotal(b)
+            return (
+              <div key={b.id} className="grid grid-cols-11 gap-2 px-5 py-3.5 border-b border-gray-50 text-sm hover:bg-blue-50/30 transition-colors items-center">
+                <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
+                <div>
+                  <p className="font-medium text-gray-800 text-xs">{b.customers?.customer_name}</p>
+                  {b.customers?.type === 'credit' && <p className="text-xs text-amber-500">เครดิต</p>}
+                  {b.customers?.overpayment_balance > 0 && (
+                    <span className="text-xs bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-md font-medium inline-block mt-0.5">
+                      มีเครดิต ฿{b.customers.overpayment_balance.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
+                    </span>
+                  )}
+                </div>
+                <span className="text-gray-500 text-xs">{b.booking_date}</span>
+                <span className="text-gray-700 text-xs">{workerCount > 0 ? `${workerCount} คน` : '-'}</span>
+                <span className="text-gray-700 text-xs">{p?.price_per_worker > 0 ? `฿${p.price_per_worker}` : '-'}</span>
+                <span className="text-gray-700 text-xs">{normalAmt > 0 ? `฿${normalAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</span>
+                <div>
+                  {specialAmt > 0 ? (
+                    <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
+                      <IconMicroscope size={10}/>฿{specialAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </span>
+                  ) : null}
+                  {mealAmt > 0 && (
+                    <span className="text-xs bg-sky-50 text-sky-600 px-1.5 py-0.5 rounded-md font-medium inline-block mt-0.5">
+                      ✈️ ค่าข้าว ฿{mealAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </span>
+                  )}
+                  {specialAmt === 0 && mealAmt === 0 && <span className="text-xs text-gray-300">-</span>}
+                  {p?.use_vat && <span className="text-xs text-sky-500 mt-0.5 block">รวม VAT</span>}
+                  {p?.use_wht && <span className="text-xs text-rose-500 mt-0.5 block">หัก ณ ที่จ่าย 3%</span>}
+                  {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>}
+                </div>
+                <div>
+                  {p?.amount_received > 0 ? (
+                    <p className="text-xs font-semibold text-emerald-600">฿{p.amount_received.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  ) : <span className="text-xs text-gray-300">-</span>}
+                  {p?.method === 'transfer' && p?.bank_accounts && (
+                    <p className="text-xs text-gray-400 mt-0.5">{getBankAccountLabel(p.bank_accounts)}</p>
+                  )}
+                  {p?.credit_used > 0 && (
+                    <p className="text-xs text-emerald-500 mt-0.5">ใช้เครดิต ฿{p.credit_used.toLocaleString()}</p>
+                  )}
+                  {p?.credit_deposited > 0 && (
+                    <p className="text-xs text-sky-500 mt-0.5">เก็บเป็นเครดิต ฿{p.credit_deposited.toLocaleString()}</p>
+                  )}
+                  {p?.wht_amount > 0 && (
+                    <p className="text-xs text-rose-500 mt-0.5">หัก ณ ที่จ่าย ฿{p.wht_amount.toLocaleString()}</p>
+                  )}
+                </div>
+                <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span></span>
+                <span>
+                  {b._hasSlip ? (
+                    <span className="text-xs text-green-600 font-medium">📎 {b._slipCount}</span>
+                  ) : (
+                    <span className="text-xs text-amber-500 font-medium">⚠️ ยังไม่แนบ</span>
+                  )}
+                </span>
+                <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก</button>
+              </div>
+            )
+          })}
         </div>
       </div>
+
+      {showModal && selected && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-100">
+              <p className="text-base font-semibold text-gray-800">{selected.customers?.customer_name}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{selected.case_number} · {selected.booking_date}</p>
+            </div>
+            <div className="p-6 space-y-4">
+              {selected.customers?.type === 'credit' && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                  <p className="text-xs text-amber-700 font-semibold">ลูกค้าเครดิต</p>
+                  <p className="text-xs text-amber-600 mt-0.5">วงเงิน: ฿{selected.customers.credit_limit?.toLocaleString()} | ค้างอยู่: ฿{selected.customers.credit_balance?.toLocaleString()}</p>
+                </div>
+              )}
+              {creditAvailableRaw > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-emerald-700">💚 ลูกค้ามียอดเครดิตค้างอยู่ (จากการโอนเกินครั้งก่อน)</p>
+                  <p className="text-lg font-bold text-emerald-700 mt-0.5">฿{creditAvailableRaw.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2.5">
+                    <input type="checkbox" checked={form.credit_toggle}
+                      onChange={(e) => setForm({
+                        ...form,
+                        credit_toggle: e.target.checked,
+                        credit_used: e.target.checked
+                          ? Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
+                          : 0
+                      })}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs font-medium text-gray-700">ใช้เครดิตนี้หักยอดจองนี้</span>
+                  </label>
+                  {form.credit_toggle && maxUsableCredit === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">⚠️ ยอดรวมยังเป็น 0 บาท กรุณากรอก "ราคา/คน" ก่อน ถึงจะหักเครดิตได้</p>
+                  )}
+                  {form.credit_toggle && (
+                    <div className="mt-2">
+                      <label className="text-xs text-gray-600 mb-1 block">จำนวนเงินที่จะหัก (บาท)</label>
+                      <input type="text" inputMode="numeric" value={form.credit_used || ''}
+                        onChange={(e) => {
+                          const v = Number(e.target.value.replace(/\D/g,''))
+                          setForm({...form, credit_used: Math.max(0, Math.min(v, maxUsableCredit))})
+                        }}
+                        className="w-full border border-emerald-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
+                      <p className="text-xs text-gray-400 mt-1">หักได้สูงสุด ฿{maxUsableCredit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-700 mb-3">💰 คำนวณยอดเงิน</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">จำนวนแรงงาน (คน)</label>
+                    <input type="text" inputMode="numeric" value={form.worker_count || ''}
+                      onChange={(e) => setForm({...form, worker_count: Number(e.target.value.replace(/\D/g,''))})}
+                      placeholder="0"
+                      className="w-full border border-blue-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">ราคา/คน (บาท)</label>
+                    <input type="text" inputMode="numeric" value={form.price_per_worker || ''}
+                      onChange={(e) => setForm({...form, price_per_worker: Number(e.target.value.replace(/\D/g,''))})}
+                      placeholder="0"
+                      className="w-full border border-blue-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-blue-200 mb-3">
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input type="checkbox" checked={form.use_vat}
+                      onChange={(e) => setForm({...form, use_vat: e.target.checked})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs font-medium text-gray-700">คิด VAT 7% (เฉพาะยอดตรวจปกติ)</span>
+                  </label>
+                  {form.use_vat && (
+                    <div className="flex gap-3 pl-6 mb-2">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={form.vat_mode === 'exclusive'}
+                          onChange={() => setForm({...form, vat_mode: 'exclusive'})}
+                          className="text-[#185FA5]"/>
+                        <span className="text-xs text-gray-600">ราคา + VAT (บวกเพิ่ม)</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={form.vat_mode === 'inclusive'}
+                          onChange={() => setForm({...form, vat_mode: 'inclusive'})}
+                          className="text-[#185FA5]"/>
+                        <span className="text-xs text-gray-600">ราคารวม VAT แล้ว</span>
+                      </label>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-gray-100">
+                    <input type="checkbox" checked={form.use_wht}
+                      onChange={(e) => setForm({...form, use_wht: e.target.checked})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs font-medium text-gray-700">หัก ณ ที่จ่าย 3% (คิดจากยอดตรวจก่อน VAT เท่านั้น)</span>
+                  </label>
+                </div>
+                <div className="space-y-1.5 bg-white rounded-lg p-3 border border-blue-200">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>ยอดตรวจสุขภาพปกติ {form.use_vat && form.vat_mode === 'inclusive' ? '(ก่อน VAT)' : ''}</span>
+                    <span className="font-medium text-gray-700">฿{vatBase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                  {form.use_vat && (
+                    <div className="flex justify-between text-xs text-sky-600">
+                      <span>VAT 7%</span>
+                      <span className="font-medium">฿{vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {specialAmountSelected > 0 && (
+                    <div className="flex justify-between text-xs text-purple-600">
+                      <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ</span>
+                      <span className="font-medium">฿{specialAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {mealAmountSelected > 0 && (
+                    <div className="flex justify-between text-xs text-sky-600">
+                      <span>✈️ ค่าข้าวไฟล์ทบิน ({selected.meal_price}×{selected.meal_count}มื้อ×{selected.booked_count}คน) — ไม่รวม VAT</span>
+                      <span className="font-medium">฿{mealAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                    <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งหมด</span>
+                    <span className="text-lg font-bold text-[#185FA5]">฿{grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                  {creditUsed > 0 && (
+                    <div className="flex justify-between text-xs text-emerald-600">
+                      <span>หักเครดิตสะสม</span>
+                      <span className="font-medium">- ฿{creditUsed.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {whtAmount > 0 && (
+                    <div className="flex justify-between text-xs text-rose-600">
+                      <span>หัก ณ ที่จ่าย 3% (จาก ฿{vatBase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})</span>
+                      <span className="font-medium">- ฿{whtAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  {(creditUsed > 0 || whtAmount > 0) && (
+                    <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                      <span className="text-sm font-semibold text-gray-700">ยอดที่ต้องชำระจริง</span>
+                      <span className="text-lg font-bold text-emerald-600">฿{netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">ยอดรับชำระจริง (บาท)</label>
+                <div className="flex gap-2">
+                  <input type="text" inputMode="numeric"
+                    value={form.amountTouched ? (form.amount_received === 0 ? '0' : form.amount_received || '') : ''}
+                    onChange={(e) => setForm({...form, amount_received: Number(e.target.value.replace(/\D/g,'')), amountTouched: true})}
+                    placeholder={`${netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เท่ากับยอดที่ต้องชำระ)`}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  <button type="button" onClick={() => setForm({...form, amount_received: 0, amountTouched: true})}
+                    className="px-3 py-2.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 whitespace-nowrap">
+                    ยังไม่จ่าย (0)
+                  </button>
+                </div>
+                {form.amountTouched && form.amount_received === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">⚠️ บันทึกเป็นยังไม่ได้รับชำระเลย (0 บาท) — ยอดนี้จะค้างเป็นหนี้เต็มจำนวน</p>
+                )}
+              </div>
+              {excess > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-amber-700">
+                    ตรวจพบว่ารับชำระเกินยอดที่ต้องจ่าย ฿{excess.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input type="checkbox" checked={form.keep_excess_credit}
+                      onChange={(e) => setForm({...form, keep_excess_credit: e.target.checked})}
+                      className="rounded border-gray-300"/>
+                    <span className="text-xs text-gray-700">เก็บส่วนเกินนี้ไว้เป็นเครดิตให้ลูกค้า (นำไปหักยอดจองครั้งหน้าได้)</span>
+                  </label>
+                  {!form.keep_excess_credit && (
+                    <p className="text-xs text-gray-400 mt-1">ถ้าไม่ติ๊ก ระบบจะไม่บันทึกส่วนเกินนี้เป็นเครดิต</p>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">วิธีชำระ</label>
+                  <select value={form.method}
+                    onChange={(e) => setForm({...form, method: e.target.value, bank_account_id: e.target.value === 'transfer' ? form.bank_account_id : ''})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="transfer">โอนเงิน</option>
+                    <option value="cash">เงินสด</option>
+                    <option value="credit">เครดิต</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">สถานะ</label>
+                  <select value={form.payment_status} onChange={(e) => setForm({...form, payment_status: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option>ชำระเงินแล้ว</option><option>ยังไม่ชำระ</option>
+                    <option>ค้างชำระ</option><option>เครดิต</option>
+                  </select>
+                </div>
+              </div>
+              {form.method === 'transfer' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">บัญชีที่รับโอน</label>
+                  <select value={form.bank_account_id} onChange={(e) => setForm({...form, bank_account_id: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">เลือกบัญชี...</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>{getBankAccountLabel(acc)} ({acc.account_number})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่ใบวางบิล</label>
+                <input value={form.invoice_no} onChange={(e) => setForm({...form, invoice_no: e.target.value})}
+                  placeholder="INV-XXXX"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่อ้างอิง</label>
+                <input value={form.ref_no} onChange={(e) => setForm({...form, ref_no: e.target.value})}
+                  placeholder="เลขที่อ้างอิงการโอน..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
+                <textarea value={form.note} onChange={(e) => setForm({...form, note: e.target.value})} rows={2}
+                  placeholder="หมายเหตุเพิ่มเติม..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <button onClick={handleSave} disabled={savingPayment} className="w-full bg-[#185FA5] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#0C447C] disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {savingPayment ? 'กำลังบันทึก...' : 'บันทึกการชำระเงิน'}
+              </button>
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-xs font-medium text-gray-600 mb-2">แนบสลิป ({slips.length} ไฟล์)</p>
+                {slips.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {slips.map((slip) => (
+                      <div key={slip.id} className="flex items-center justify-between gap-2 p-2 bg-green-50 rounded-lg">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <IconCheck size={13} className="text-green-600 flex-shrink-0"/>
+                          <a href={slip.storage_url} target="_blank" className="text-xs text-green-700 hover:underline truncate">{slip.file_name}</a>
+                        </div>
+                        <button onClick={() => handleDeleteSlip(slip.id)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                          <IconX size={14}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500 transition-colors">
+                  <IconUpload size={15}/>
+                  {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์สลิป (เลือกได้หลายไฟล์)'}
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={handleUploadSlip} className="hidden" disabled={uploading}/>
+                </label>
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-xs font-medium text-gray-600">ใบเสร็จรับเงิน ({receiptsForBooking.length} ใบ)</p>
+                  <button
+                    onClick={() => setReceiptModal({ mode: 'create' })}
+                    disabled={!getP(selected)?.id}
+                    title={!getP(selected)?.id ? 'กรุณาบันทึกการชำระเงินก่อน' : ''}
+                    className="flex items-center gap-1 text-xs bg-[#185FA5] text-white px-3 py-1.5 rounded-lg hover:bg-[#0C447C] disabled:opacity-40 disabled:cursor-not-allowed">
+                    <IconReceipt size={13}/> ออกใบเสร็จ
+                  </button>
+                </div>
+                {receiptsForBooking.length > 0 && (
+                  <div className="space-y-1.5">
+                    {receiptsForBooking.map((rc) => (
+                      <div key={rc.id} className={`flex items-center justify-between gap-2 p-2 rounded-lg ${rc.is_cancelled ? 'bg-red-50' : 'bg-blue-50'}`}>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-medium truncate ${rc.is_cancelled ? 'text-red-500 line-through' : 'text-blue-700'}`}>{rc.receipt_no}</p>
+                          <p className="text-xs text-gray-400">{rc.issue_date} · ฿{rc.total_amount?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
+                        </div>
+                        <button onClick={() => setReceiptModal({ mode: 'view', receipt: rc })} className="text-xs text-[#185FA5] hover:underline flex-shrink-0">
+                          {rc.is_cancelled ? 'ดู' : 'พิมพ์ซ้ำ'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 flex justify-end">
+              <button onClick={() => setShowModal(false)} className="px-5 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSplitModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+              <div>
+                <p className="text-base font-semibold text-gray-800">ตัดชำระหลายจอง</p>
+                <p className="text-xs text-gray-400 mt-0.5">ใช้เมื่อลูกค้าโอนมาสลิปเดียว แต่มีหลายรายการจอง</p>
+              </div>
+              <button onClick={() => setShowSplitModal(false)} className="text-gray-400 hover:text-gray-600"><IconX size={20}/></button>
+            </div>
+
+            {/* ค้นหา / กรอง */}
+            <div className="p-4 border-b border-gray-100 grid grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs text-gray-500 mb-1 block">ค้นหาลูกค้า หรือเลขจอง</label>
+                <div className="relative">
+                  <IconSearch size={14} className="absolute left-3 top-2.5 text-gray-400"/>
+                  <input type="text" value={splitSearch} onChange={(e) => setSplitSearch(e.target.value)}
+                    placeholder="พิมพ์ชื่อลูกค้า..."
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่ม</label>
+                <input type="date" value={splitDateFrom} onChange={(e) => setSplitDateFrom(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">วันที่สิ้นสุด</label>
+                <input type="date" value={splitDateTo} onChange={(e) => setSplitDateTo(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              </div>
+            </div>
+
+            {/* ยอดโอนจริง + วิธีชำระ + สลิป */}
+            <div className="p-4 border-b border-gray-100 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">ยอดที่ลูกค้าโอนมาจริง (บาท) — ยอดสลิปเดียว</label>
+                <div className="flex gap-2">
+                  <input type="text" inputMode="numeric" value={splitTotalReceived}
+                    onChange={(e) => setSplitTotalReceived(e.target.value === '' ? '' : Number(e.target.value.replace(/\D/g,'')))}
+                    placeholder="0"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  <button type="button" onClick={autoDistributeSplit}
+                    className="px-3 py-2 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] whitespace-nowrap">
+                    แบ่งอัตโนมัติ
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">ติ๊กเลือกรายการที่ต้องการก่อน แล้วกด "แบ่งอัตโนมัติ" ระบบจะตัดยอดให้ตามลำดับจนกว่ายอดจะหมด</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">วิธีชำระ</label>
+                <select value={splitSource.method}
+                  onChange={(e) => setSplitSource({...splitSource, method: e.target.value, bank_account_id: e.target.value === 'transfer' ? splitSource.bank_account_id : ''})}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                  <option value="transfer">โอนเงิน</option>
+                  <option value="cash">เงินสด</option>
+                  <option value="credit">เครดิต</option>
+                </select>
+              </div>
+              {splitSource.method === 'transfer' && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">บัญชีที่รับโอน</label>
+                  <select value={splitSource.bank_account_id} onChange={(e) => setSplitSource({...splitSource, bank_account_id: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    <option value="">เลือกบัญชี...</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>{getBankAccountLabel(acc)} ({acc.account_number})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">แนบสลิป (ไฟล์เดียว ใช้กับทุกรายการที่เลือก)</label>
+                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500 transition-colors">
+                  <IconUpload size={14}/>
+                  <span className="truncate">{splitSlipFile ? splitSlipFile.name : 'เลือกไฟล์สลิป...'}</span>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setSplitSlipFile(e.target.files?.[0] || null)} className="hidden"/>
+                </label>
+              </div>
+            </div>
+
+            <div className="px-4 pt-3 pb-1 grid grid-cols-3 gap-2">
+              <div className="bg-blue-50 rounded-xl px-4 py-2 text-center">
+                <p className="text-xs text-blue-500">ยอดที่โอนมา</p>
+                <p className="text-lg font-bold text-[#185FA5]">฿{(Number(splitTotalReceived) || 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-emerald-50 rounded-xl px-4 py-2 text-center">
+                <p className="text-xs text-emerald-500">ยอดที่ตัดแล้ว</p>
+                <p className="text-lg font-bold text-emerald-600">฿{splitTotal.toLocaleString()}</p>
+              </div>
+              <div className={`rounded-xl px-4 py-2 text-center ${splitUnallocated === 0 ? 'bg-gray-50' : 'bg-amber-50'}`}>
+                <p className={`text-xs ${splitUnallocated === 0 ? 'text-gray-400' : 'text-amber-600'}`}>ยังไม่ได้จัดสรร</p>
+                <p className={`text-lg font-bold ${splitUnallocated === 0 ? 'text-gray-400' : 'text-amber-600'}`}>฿{splitUnallocated.toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {splitLoading ? (
+                <p className="text-sm text-gray-400 text-center py-8">กำลังโหลดรายการ...</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-6 gap-2 px-3 py-2 bg-gray-50 rounded-lg text-xs font-semibold text-gray-500 mb-2">
+                    <span className="col-span-2">ลูกค้า / เลขจอง</span>
+                    <span>วันที่</span>
+                    <span>ยอดรวม</span>
+                    <span className="col-span-2">ยอดที่ตัด (บาท)</span>
+                  </div>
+                  {filteredSplitPayments.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-8">ไม่พบรายการที่ค้นหา</p>
+                  ) : filteredSplitPayments.map((sp) => (
+                    <div key={sp.booking_id} className={`grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg mb-1.5 items-center border transition-colors ${sp.selected ? 'border-blue-200 bg-blue-50' : 'border-gray-100 bg-white'}`}>
+                      <div className="col-span-2 flex items-center gap-2">
+                        <input type="checkbox" checked={sp.selected}
+                          onChange={(e) => updateSplitItem(sp.booking_id, { selected: e.target.checked, amount: e.target.checked ? sp.amount : 0 })}
+                          className="rounded border-gray-300"/>
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">{sp.customer_name}</p>
+                          <p className="text-xs text-gray-400 font-mono">{sp.case_number}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-500">{sp.booking_date}</span>
+                      <span className="text-xs font-medium text-gray-700">{sp.grand_total > 0 ? `฿${sp.grand_total.toLocaleString()}` : '-'}</span>
+                      <div className="col-span-2">
+                        <input type="text" inputMode="numeric"
+                          value={sp.amount || ''}
+                          disabled={!sp.selected}
+                          onChange={(e) => updateSplitItem(sp.booking_id, { amount: Number(e.target.value.replace(/\D/g,'')) })}
+                          placeholder="0"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] disabled:bg-gray-50 disabled:text-gray-300"/>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-100 flex gap-2 justify-end">
+              <button onClick={() => setShowSplitModal(false)} className="px-5 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
+              <button onClick={handleSplitSave}
+                disabled={splitSaving || splitPayments.filter(s => s.selected && s.amount > 0).length === 0}
+                className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50 font-medium transition-colors">
+                {splitSaving ? 'กำลังบันทึก...' : `บันทึก (${splitPayments.filter(s => s.selected).length} รายการ)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showCompanySettings && (
+        <CompanySettingsModal
+          settings={companySettings}
+          onClose={() => setShowCompanySettings(false)}
+          onSaved={(s) => setCompanySettings(s)}
+        />
+      )}
+
+      {receiptModal && (
+        <ReceiptModal
+          mode={receiptModal.mode}
+          booking={selected}
+          payment={getP(selected)}
+          companySettings={companySettings}
+          existingReceipt={receiptModal.receipt}
+          onClose={() => setReceiptModal(null)}
+          onIssued={() => { if (selected?.id) fetchReceiptsForBooking(selected.id) }}
+          onCancelled={() => { if (selected?.id) fetchReceiptsForBooking(selected.id) }}
+        />
+      )}
     </div>
   )
 }
