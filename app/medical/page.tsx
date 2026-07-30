@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconUpload, IconCheck, IconClock, IconAlertTriangle, IconSearch, IconDownload, IconLink } from '@tabler/icons-react'
+import { IconUpload, IconCheck, IconClock, IconAlertTriangle, IconSearch, IconDownload, IconLink, IconMicroscope } from '@tabler/icons-react'
 
 export default function Medical() {
   const { user, role, ready, logout } = useAuth('/medical')
@@ -18,7 +18,6 @@ export default function Medical() {
   const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '', parcel_sent: false })
   const [loaded, setLoaded] = useState(false)
 
-  // สำหรับแนบลิงก์ (เช่น Google Drive, Dropbox) แทนการอัปโหลดไฟล์ตรง — เลี่ยงปัญหาไฟล์ใหญ่เกินลิมิต
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
   const [savingLink, setSavingLink] = useState(false)
@@ -42,7 +41,7 @@ export default function Medical() {
     const df = dateFrom ?? filterDateFrom
     const dt = dateTo ?? filterDateTo
     while (true) {
-      let q = supabase.from('bookings').select('*, customers(customer_name), medical_cases(*)')
+      let q = supabase.from('bookings').select('*, customers(customer_name), medical_cases(*), special_exams(*, special_exam_items(*))')
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
@@ -72,9 +71,13 @@ export default function Medical() {
 
   const handleSaveMedical = async () => {
     const mc = Array.isArray(selected?.medical_cases) ? selected?.medical_cases?.[0] : selected?.medical_cases
+    const hasSpecialExam = (selected?.special_exams && selected?.special_exams.length > 0)
+    const allowedDays = hasSpecialExam ? 14 : 3
+
     const deadline = new Date(form.exam_date)
-    deadline.setDate(deadline.getDate() + 3)
+    deadline.setDate(deadline.getDate() + allowedDays)
     const deadlineStr = deadline.toISOString().slice(0, 10)
+
     if (mc?.id) {
       await supabase.from('medical_cases').update({ actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, parcel_sent: form.parcel_sent }).eq('id', mc.id)
     } else {
@@ -83,36 +86,25 @@ export default function Medical() {
     fetchCases(); setShowModal(false)
   }
 
-  // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
   const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
     try {
-      // 1. ขอ "ลิงก์อัปโหลดชั่วคราว" จาก backend ก่อน (ส่งแค่ชื่อไฟล์ ไม่ใช่ตัวไฟล์ ไม่มีทางติด limit ของ Vercel)
       const res = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: file.name, folder, contentType: file.type || 'application/octet-stream' }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        console.error('ขอลิงก์อัปโหลดไม่สำเร็จ:', err)
-        return null
-      }
+      if (!res.ok) return null
       const { uploadUrl, publicUrl, fileName } = await res.json()
 
-      // 2. อัปโหลดไฟล์จริง "ตรงไปที่ Google Cloud Storage เลย" ไม่ผ่าน Vercel อีกต่อไป
       const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       })
-      if (!uploadRes.ok) {
-        console.error('อัปโหลดไป GCS ไม่สำเร็จ:', uploadRes.status)
-        return null
-      }
+      if (!uploadRes.ok) return null
 
       return { url: publicUrl, fileName }
     } catch (err) {
-      console.error('อัปโหลดไม่สำเร็จ:', err)
       return null
     }
   }
@@ -134,10 +126,8 @@ export default function Medical() {
     setUploading(false)
   }
 
-  // แนบลิงก์ URL แทนการอัปโหลดไฟล์โดยตรง (เช่น ลิงก์ Google Drive ที่แชร์ไว้แล้ว) — ไม่มีข้อจำกัดเรื่องขนาดไฟล์เลย
   const handleAddLink = async () => {
     if (!linkUrl.trim()) return
-    // เช็คคร่าวๆ ว่าเป็น URL ที่ใช้ได้
     try { new URL(linkUrl.trim()) } catch { alert('ลิงก์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง (ต้องขึ้นต้นด้วย http:// หรือ https://)'); return }
 
     setSavingLink(true)
@@ -165,24 +155,40 @@ export default function Medical() {
     if (mc?.id) fetchCertificates(mc.id)
   }
 
+  // 🔹 ปรับระบบคำนวณสถานะใบแพทย์ รองรับเคสตรวจพิเศษ 14 วัน
   const getCertStatus = (booking: any) => {
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
+    const hasSpecialExam = (booking.special_exams && booking.special_exams.length > 0)
+    
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-500', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck }
     if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-50 text-sky-600', icon: IconClock }
-    const deadline = new Date(mc.cert_deadline)
-    if (new Date() > deadline) return { label: 'เกิน 3 วัน!', color: 'bg-red-50 text-red-600', icon: IconAlertTriangle }
+    
+    const today = new Date()
+    const examDate = new Date(mc.exam_date || booking.booking_date)
+    const daysDiff = Math.floor((today.getTime() - examDate.getTime()) / 86400000)
+
+    if (hasSpecialExam && daysDiff <= 14) {
+      return { label: 'รอผล Lab (7-14 วัน)', color: 'bg-purple-50 text-purple-700', icon: IconClock }
+    }
+
+    const allowedDays = hasSpecialExam ? 14 : 3
+    if (daysDiff > allowedDays) {
+      return { label: `เกิน ${allowedDays} วัน!`, color: 'bg-red-50 text-red-600', icon: IconAlertTriangle }
+    }
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock }
   }
 
-  // เปลี่ยนสถานะใบแพทย์ตรงจากแถว — ถ้ายังไม่มี medical_cases เลย จะสร้างแถวใหม่ให้
   const handleQuickCertStatus = async (b: any, newStatus: string) => {
     const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+    const hasSpecialExam = (b.special_exams && b.special_exams.length > 0)
+    const allowedDays = hasSpecialExam ? 14 : 3
+
     if (mc?.id) {
       await supabase.from('medical_cases').update({ cert_status: newStatus }).eq('id', mc.id)
     } else {
       const deadline = new Date(b.booking_date)
-      deadline.setDate(deadline.getDate() + 3)
+      deadline.setDate(deadline.getDate() + allowedDays)
       await supabase.from('medical_cases').insert([{
         booking_id: b.id, actual_count: 0, cert_count: 0,
         exam_date: b.booking_date, cert_deadline: deadline.toISOString().slice(0,10),
@@ -213,12 +219,14 @@ export default function Medical() {
     const rows = filtered.map(b => {
       const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
       const status = getCertStatus(b)
+      const spWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
       return {
         'เลขจอง': b.case_number,
         'ลูกค้า': b.customers?.customer_name,
         'วันที่ตรวจ': mc?.exam_date || b.booking_date,
         'จำนวนจอง': b.booked_count,
         'จำนวนตรวจจริง': mc?.actual_count || '-',
+        'จำนวนตรวจพิเศษ': spWorkers,
         'สถานะใบแพทย์': status.label,
         'หมายเหตุ': mc?.doctor_note || '',
       }
@@ -253,6 +261,7 @@ export default function Medical() {
           </button>
         </div>
 
+        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -285,7 +294,9 @@ export default function Medical() {
                 <option value="">ทั้งหมด</option>
                 <option>รอบันทึก</option>
                 <option>รอส่งใบแพทย์</option>
+                <option>รอผล Lab (7-14 วัน)</option>
                 <option>เกิน 3 วัน!</option>
+                <option>เกิน 14 วัน!</option>
                 <option>ส่งครบแล้ว</option>
               </select>
             </div>
@@ -327,10 +338,11 @@ export default function Medical() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-9 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
-            <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่ตรวจ</span>
-            <span>สถานที่</span><span>จอง / จริง</span><span>ใบแพทย์</span><span>ผลต่าง</span><span>สถานะใบแพทย์</span><span></span>
+        {/* 🔹 ตารางหลัก (เพิ่มคอลัมน์ตรวจพิเศษ) */}
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+          <div className="grid grid-cols-10 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100 font-semibold">
+            <span>เลขจอง</span><span className="col-span-2">ลูกค้า</span><span>วันที่ตรวจ</span>
+            <span>สถานที่</span><span>จอง / จริง</span><span>ตรวจพิเศษ</span><span>ผลต่าง</span><span>สถานะใบแพทย์</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบรายการ</div>
@@ -338,15 +350,16 @@ export default function Medical() {
             filtered.map((b) => {
               const status = getCertStatus(b)
               const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
-              // ผลต่าง = จำนวนใบแพทย์ - จำนวนตรวจจริง (ลบ = ยังส่งใบแพทย์ไม่ครบ, บวก = ส่งเกินมา, 0 = ครบพอดี)
               const certCount = mc?.cert_count ?? null
               const actualCount = mc?.actual_count ?? null
               const diff = (certCount !== null && actualCount !== null) ? certCount - actualCount : null
+              const spWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
+
               return (
-                <div key={b.id} className="grid grid-cols-9 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+                <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
-                  <span className="font-medium text-gray-700">{b.customers?.customer_name}</span>
-                  <span className="text-gray-500">{mc?.exam_date || b.booking_date}</span>
+                  <span className="col-span-2 font-medium text-gray-700 truncate">{b.customers?.customer_name}</span>
+                  <span className="text-gray-500 text-xs">{mc?.exam_date || b.booking_date}</span>
                   <span className="text-gray-500 text-xs truncate flex items-center gap-1">
                     {b.location_name || '-'}
                     {b.location_url && (
@@ -358,8 +371,17 @@ export default function Medical() {
                       </a>
                     )}
                   </span>
-                  <span className="text-gray-700">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
-                  <span className="text-gray-700 font-medium">{certCount?.toLocaleString() ?? '-'}</span>
+                  <span className="text-gray-700 text-xs">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
+                  
+                  {/* 🔹 คอลัมน์ตรวจพิเศษ */}
+                  <span className="text-xs">
+                    {spWorkers > 0 ? (
+                      <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
+                        <IconMicroscope size={11}/>{spWorkers} คน
+                      </span>
+                    ) : <span className="text-gray-300">-</span>}
+                  </span>
+
                   <span>
                     {diff === null ? (
                       <span className="text-xs text-gray-300">-</span>
@@ -384,7 +406,7 @@ export default function Medical() {
                     </select>
                     {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
                   </span>
-                  <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right">บันทึก / แนบไฟล์</button>
+                  <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก / แนบไฟล์</button>
                 </div>
               )
             })
@@ -452,14 +474,12 @@ export default function Medical() {
                 </div>
               ))}
 
-              {/* อัปโหลดไฟล์ตรง */}
               <label className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
                 <IconUpload size={15} />
                 {uploading ? 'กำลังอัพโหลด...' : 'แนบไฟล์ใบรับรองแพทย์'}
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.zip" onChange={handleUploadFile} className="hidden" disabled={uploading} />
               </label>
 
-              {/* แนบลิงก์ URL แทน */}
               <div className="mt-3 bg-sky-50 border border-sky-100 rounded-lg p-3">
                 <p className="text-xs font-medium text-sky-700 mb-2 flex items-center gap-1">
                   <IconLink size={13} /> หรือแนบลิงก์ไฟล์ (Google Drive, Dropbox ฯลฯ)
@@ -476,7 +496,6 @@ export default function Medical() {
                     {savingLink ? 'กำลังบันทึก...' : '+ เพิ่มลิงก์'}
                   </button>
                 </div>
-                <p className="text-xs text-sky-500 mt-1.5">⚠️ ถ้าใช้ Google Drive อย่าลืมเปลี่ยนสิทธิ์แชร์เป็น "ทุกคนที่มีลิงก์" ก่อน ไม่งั้นคนอื่นเปิดดูไม่ได้</p>
               </div>
             </div>
             <div className="flex justify-end mt-4">
