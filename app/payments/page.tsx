@@ -29,8 +29,8 @@ export default function Payments() {
     payment_status: 'ชำระเงินแล้ว', invoice_no: '',
     worker_count: 0, price_per_worker: 0,
     ref_no: '', note: '', bank_account_id: '',
-    use_vat: false, vat_mode: 'exclusive', // 'exclusive' = บวกเพิ่ม, 'inclusive' = รวมในยอดแล้ว
-    use_wht: false, // หัก ณ ที่จ่าย 3%
+    use_vat: false, vat_mode: 'exclusive',
+    use_wht: false,
     credit_used: 0, credit_toggle: false, keep_excess_credit: true,
   })
 
@@ -127,6 +127,7 @@ export default function Payments() {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
   }
 
+  // ดึงจำนวนคนตรวจพิเศษรวม
   const getSpecialWorkers = (b: any) => {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_workers || 0), 0)
   }
@@ -331,7 +332,7 @@ export default function Payments() {
     let from = 0
     while (true) {
       const { data } = await supabase.from('bookings')
-        .select('id, case_number, booking_date, customer_id, meal_price, meal_count, booked_count, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount, total_workers)')
+        .select('id, case_number, booking_date, customer_id, meal_price, meal_count, booked_count, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(*, special_exam_items(*))')
         .order('booking_date', { ascending: false })
         .range(from, from + 999)
       if (!data || data.length === 0) break
@@ -528,7 +529,6 @@ export default function Payments() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
@@ -631,7 +631,6 @@ export default function Payments() {
           </div>
         </div>
 
-        {/* 🔹 Table แสดงผลหลัก */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
           <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
