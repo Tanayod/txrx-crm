@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload, IconCheck, IconClock, IconAlertTriangle } from '@tabler/icons-react'
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconDownload, IconCheck, IconClock, IconAlertTriangle, IconMicroscope } from '@tabler/icons-react'
 
 const provinces = ['กรุงเทพมหานคร','สมุทรสาคร','ชลบุรี','นนทบุรี','ปทุมธานี','ระยอง','ลพบุรี','เชียงใหม่','นครปฐม','สมุทรปราการ','พระนครศรีอยุธยา','ลำพูน','เพชรบูรณ์','อื่นๆ']
 const SIM_PACKAGES = ['200', '250', '300']
@@ -18,7 +18,9 @@ const emptyForm = {
   service_type: 'ตรวจนอกสถานที่ (Mobile)',
   province: '', location_name: '', location_url: '',
   exam_time: '', nationality: 'พม่า',
-  booked_count: 0, sim_true_status: 'รอคำตอบลูกค้า',
+  booked_count: 0, 
+  special_exam_count: 0, // 🔹 เพิ่มยอดตรวจพิเศษ
+  sim_true_status: 'รอคำตอบลูกค้า',
   sim_items: [] as any[],
   meal_price: 0, meal_count: 0,
   admin_note: ''
@@ -63,8 +65,6 @@ export default function Bookings() {
 
   async function fetchAll() { fetchBookings(); fetchCustomers(); fetchLocations() }
 
-  // รองรับทั้ง 2 กรณี: payments เป็น array (ปกติ) หรือเป็น object เดี่ยว
-  // (Supabase จะส่งมาเป็น object เดี่ยวถ้า column booking_id มี UNIQUE constraint ผูกอยู่ — ซึ่งตอนนี้มีแล้วเพื่อกัน payment ซ้ำ)
   const getP = (b: any) => Array.isArray(b?.payments) ? b.payments?.[0] : b?.payments
 
   async function fetchBookings(dateFrom?: string, dateTo?: string) {
@@ -76,7 +76,7 @@ export default function Bookings() {
     while (true) {
       let q = supabase
         .from('bookings')
-        .select('*, customers(customer_name), medical_cases(*), payments(*)')
+        .select('*, customers(customer_name), medical_cases(*), payments(*), special_exams(*, special_exam_items(*))')
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
@@ -109,12 +109,17 @@ export default function Bookings() {
 
   const openEdit = async (b: any) => {
     setEditingId(b.id)
+    
+    // คำนวณจำนวนตรวจพิเศษย่อยที่มีอยู่แล้วใน booking นี้
+    const spWorkers = b.special_exams?.reduce((sum: number, sp: any) => sum + (sp.total_workers || 0), 0) || 0
+
     setForm({
       customer_id: b.customer_id, customer_name_display: b.customers?.customer_name || '',
       booking_date: b.booking_date, shift: b.shift, service_type: b.service_type,
       province: b.province || '', location_name: b.location_name || '',
       location_url: b.location_url || '', exam_time: b.exam_time || '',
       nationality: b.nationality || 'พม่า', booked_count: b.booked_count || 0,
+      special_exam_count: b.special_exam_count || spWorkers || 0,
       sim_true_status: b.sim_true_status || 'รอคำตอบลูกค้า',
       meal_price: b.meal_price || 0, meal_count: b.meal_count || 0,
       admin_note: b.admin_note || ''
@@ -133,7 +138,8 @@ export default function Bookings() {
       shift: form.shift, service_type: form.service_type, province: form.province,
       location_name: form.location_name, location_url: form.location_url,
       exam_time: form.exam_time, nationality: form.nationality,
-      booked_count: form.booked_count, sim_true_status: form.sim_true_status,
+      booked_count: form.booked_count, 
+      sim_true_status: form.sim_true_status,
       sim_count: totalSimCount,
       meal_price: form.meal_price, meal_count: form.meal_count,
       admin_note: form.admin_note,
@@ -146,6 +152,7 @@ export default function Bookings() {
       const { data: inserted } = await supabase.from('bookings').insert([{ ...payload, case_number: generateCaseNumber() }]).select().single()
       bookingId = inserted?.id
     }
+
     if (bookingId && simItems.length > 0) {
       const simRows = simItems.filter(i => i.sim_count > 0).map(i => ({
         booking_id: bookingId, sim_package: i.sim_package, sim_type: i.sim_type, sim_count: i.sim_count
@@ -155,10 +162,6 @@ export default function Bookings() {
     setSaving(false); fetchBookings(); setShowModal(false)
   }
 
-  // ลบ booking ต้องลบข้อมูลที่ผูกอยู่ทุกตารางก่อน ไม่งั้นจะชน FK constraint
-  // ลำดับสำคัญ: receipts ผูกกับทั้ง payment_id และ booking_id โดยตรง ต้องลบ "ก่อน" payment_slips และ payments เสมอ
-  // certificates ผูกกับ medical_cases ผ่าน case_id ต้องลบ "ก่อน" medical_cases เสมอ
-  // รายการตารางที่ผูกกับ booking_id ทั้งหมด ณ ปัจจุบัน: medical_cases (+certificates ผ่าน case_id), payments (+receipts, payment_slips), special_exams, sim_items
   const handleDelete = async () => {
     if (!deleteId) return
     setDeleting(true)
@@ -167,7 +170,6 @@ export default function Bookings() {
       const { data: paymentRows } = await supabase.from('payments').select('id').eq('booking_id', deleteId)
       const paymentIds = (paymentRows || []).map((p: any) => p.id)
 
-      // ลบใบเสร็จก่อนเสมอ (ผูกได้ทั้งผ่าน payment_id และ booking_id โดยตรง)
       if (paymentIds.length > 0) {
         const { error: recErr1 } = await supabase.from('receipts').delete().in('payment_id', paymentIds)
         if (recErr1) throw recErr1
@@ -200,7 +202,7 @@ export default function Bookings() {
       fetchBookings()
     } catch (err: any) {
       setDeleteError(err?.message || 'ลบไม่สำเร็จ มีข้อมูลบางอย่างผูกอยู่ที่ยังลบไม่ได้')
-    } finally {
+    } fontally {
       setDeleting(false)
     }
   }
@@ -217,23 +219,42 @@ export default function Bookings() {
     return { label: p.payment_status, color: map[p.payment_status] || 'bg-gray-100 text-gray-500' }
   }
 
+  // 🔹 ปรับปรุงการเช็คสถานะใบแพทย์ รองรับ 14 วัน สำหรับเคสตรวจพิเศษ (ป้องกัน False Alarm)
   const getMedicalStatus = (b: any) => {
     const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+    const hasSpecialExam = (b.special_exams && b.special_exams.length > 0)
+    
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-400', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบ', color: 'bg-green-100 text-green-700', icon: IconCheck }
     if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-100 text-sky-600', icon: IconClock }
-    if (mc.cert_deadline && new Date() > new Date(mc.cert_deadline)) return { label: 'เกิน 3 วัน!', color: 'bg-red-100 text-red-600', icon: IconAlertTriangle }
+    
+    // คำนวณวันเกินตามประเภทเคส
+    const today = new Date()
+    const examDate = new Date(mc.exam_date || b.booking_date)
+    const daysDiff = Math.floor((today.getTime() - examDate.getTime()) / 86400000)
+    
+    if (hasSpecialExam && daysDiff <= 14) {
+      return { label: 'รอผล Lab (7-14 วัน)', color: 'bg-purple-100 text-purple-700', icon: IconClock }
+    }
+
+    const allowedDays = hasSpecialExam ? 14 : 3
+    if (daysDiff > allowedDays) {
+      return { label: `เกิน ${allowedDays} วัน!`, color: 'bg-red-100 text-red-600', icon: IconAlertTriangle }
+    }
+
     return { label: 'รอส่งใบแพทย์', color: 'bg-amber-100 text-amber-600', icon: IconClock }
   }
 
-  // เปลี่ยนสถานะใบแพทย์ตรงจากแถว — ถ้ายังไม่มี medical_cases เลย จะสร้างแถวใหม่ให้
   const handleQuickCertStatus = async (b: any, newStatus: string) => {
     const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+    const hasSpecialExam = (b.special_exams && b.special_exams.length > 0)
+    const allowedDays = hasSpecialExam ? 14 : 3
+
     if (mc?.id) {
       await supabase.from('medical_cases').update({ cert_status: newStatus }).eq('id', mc.id)
     } else {
       const deadline = new Date(b.booking_date)
-      deadline.setDate(deadline.getDate() + 3)
+      deadline.setDate(deadline.getDate() + allowedDays)
       await supabase.from('medical_cases').insert([{
         booking_id: b.id, actual_count: 0, cert_count: 0,
         exam_date: b.booking_date, cert_deadline: deadline.toISOString().slice(0,10),
@@ -269,6 +290,7 @@ export default function Bookings() {
     const rows = filtered.map(b => {
       const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
       const p = getP(b)
+      const spWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
       return {
         'เลขจอง': b.case_number,
         'ลูกค้า': b.customers?.customer_name,
@@ -278,6 +300,7 @@ export default function Bookings() {
         'สถานที่': b.location_name,
         'จำนวนจอง': b.booked_count,
         'จำนวนตรวจจริง': mc?.actual_count || '',
+        'จำนวนตรวจพิเศษ': spWorkers,
         'ซิมที่ขาย': b.sim_count || 0,
         'แพ็กเกจซิม': b.sim_package || '',
         'สถานะเงิน': p?.payment_status || 'ยังไม่ชำระ',
@@ -320,6 +343,7 @@ export default function Bookings() {
           </div>
         </div>
 
+        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
@@ -418,11 +442,12 @@ export default function Bookings() {
           </div>
         </div>
 
+        {/* 🔹 ตารางหลัก (ปรับปรุงคอลัมน์แสดงตรวจพิเศษ) */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span className="col-span-2">ลูกค้า</span><span>วันที่</span>
-            <span>สถานที่</span><span>จอง/จริง</span><span>ซิม</span>
-            <span>สถานะเงิน</span><span>ใบแพทย์</span><span>หมายเหตุ</span><span></span>
+            <span>สถานที่</span><span>จอง/จริง</span><span>ตรวจพิเศษ</span><span>ซิม</span>
+            <span>สถานะเงิน</span><span className="col-span-2">ใบแพทย์</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-12 text-center">
@@ -433,10 +458,12 @@ export default function Bookings() {
             const payStatus = getPaymentStatus(b)
             const medStatus = getMedicalStatus(b)
             const mc = Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+            const spWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
+
             return (
               <div key={b.id} className="border-b border-gray-50">
                 <div
-                  className="grid grid-cols-11 gap-2 px-5 py-3.5 text-sm hover:bg-blue-50/30 transition-colors items-center cursor-pointer"
+                  className="grid grid-cols-12 gap-2 px-5 py-3.5 text-sm hover:bg-blue-50/30 transition-colors items-center cursor-pointer"
                   onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
                 >
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
@@ -448,6 +475,14 @@ export default function Bookings() {
                     <span className="text-gray-300 mx-0.5">/</span>
                     <span className="text-[#185FA5] font-semibold">{mc?.actual_count ?? '-'}</span>
                   </span>
+                  {/* 🔹 แสดงยอดตรวจพิเศษ */}
+                  <span className="text-xs">
+                    {spWorkers > 0 ? (
+                      <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
+                        <IconMicroscope size={11}/>{spWorkers} คน
+                      </span>
+                    ) : <span className="text-gray-300">-</span>}
+                  </span>
                   <span className="text-xs">
                     {b.sim_count > 0 ? (
                       <span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium">
@@ -456,7 +491,7 @@ export default function Bookings() {
                     ) : <span className="text-gray-300">-</span>}
                   </span>
                   <span><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${payStatus.color}`}>{payStatus.label}</span></span>
-                  <span onClick={(e) => e.stopPropagation()}>
+                  <span className="col-span-2" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={(Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.cert_status || 'รอบันทึก'}
                       onChange={(e) => handleQuickCertStatus(b, e.target.value)}
@@ -468,12 +503,12 @@ export default function Bookings() {
                       <option value="เรียบร้อย">ส่งครบ</option>
                     </select>
                   </span>
-                  <span className="text-xs text-gray-500 truncate" title={b.admin_note || ''}>{b.admin_note || '-'}</span>
                   <span className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => openEdit(b)} className="text-gray-300 hover:text-blue-500 transition-colors"><IconEdit size={15}/></button>
                     <button onClick={() => { setDeleteId(b.id); setDeleteError(null) }} className="text-gray-300 hover:text-red-500 transition-colors"><IconTrash size={15}/></button>
                   </span>
                 </div>
+
                 {expandedId === b.id && (
                   <div className="px-5 pb-4 pt-3 bg-blue-50/40 border-t border-blue-100">
                     <div className="grid grid-cols-4 gap-3">
@@ -513,9 +548,6 @@ export default function Bookings() {
                           <a href={b.location_url} target="_blank" rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
                             className="text-xs text-[#185FA5] hover:underline flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                            </svg>
                             เปิด Google Map
                           </a>
                         </div>
@@ -535,6 +567,7 @@ export default function Bookings() {
         </div>
       </div>
 
+      {/* 🔹 Modal สร้าง/แก้ไขการจอง (ปรับปรุงเพิ่มช่องตรวจพิเศษ) */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -584,6 +617,7 @@ export default function Bookings() {
                   <option>ไฟล์ทบิน</option>
                 </select>
               </div>
+
               {form.service_type === 'ไฟล์ทบิน' && (
                 <div className="bg-sky-50 border border-sky-100 rounded-xl p-4">
                   <p className="text-xs font-semibold text-sky-700 mb-3">✈️ ค่าข้าวไฟล์ทบิน</p>
@@ -611,6 +645,7 @@ export default function Bookings() {
                   )}
                 </div>
               )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">จังหวัด</label>
@@ -643,7 +678,8 @@ export default function Bookings() {
                   placeholder="https://maps.app.goo.gl/..."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">เวลา</label>
                   <input value={form.exam_time} onChange={(e) => setForm({...form, exam_time: e.target.value})}
@@ -657,7 +693,18 @@ export default function Bookings() {
                     placeholder="0"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
                 </div>
+                {/* 🔹 ช่องตรวจพิเศษ */}
+                <div>
+                  <label className="text-xs font-medium text-purple-700 mb-1.5 block flex items-center gap-1">
+                    <IconMicroscope size={12}/> ตรวจพิเศษ (คน)
+                  </label>
+                  <input type="text" inputMode="numeric" value={form.special_exam_count || ''}
+                    onChange={(e) => setForm({...form, special_exam_count: Number(e.target.value.replace(/\D/g,''))})}
+                    placeholder="0"
+                    className="w-full border border-purple-200 bg-purple-50/30 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"/>
+                </div>
               </div>
+
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ซิมทรู</label>
                 <select value={form.sim_true_status} onChange={(e) => setForm({...form, sim_true_status: e.target.value})}
@@ -667,6 +714,7 @@ export default function Bookings() {
                   <option>ไม่อนุญาต</option><option>walk-in คลินิก</option>
                 </select>
               </div>
+
               <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-3">
                   <p className="text-xs font-semibold text-purple-700">📱 ซิมที่ขาย</p>
@@ -713,6 +761,7 @@ export default function Bookings() {
                   </div>
                 )}
               </div>
+
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
                 <textarea value={form.admin_note} onChange={(e) => setForm({...form, admin_note: e.target.value})} rows={2}
@@ -730,6 +779,7 @@ export default function Bookings() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       {deleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl">
