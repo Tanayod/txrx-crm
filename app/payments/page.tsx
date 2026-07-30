@@ -86,7 +86,7 @@ export default function Payments() {
     const dt = dateTo ?? filterDateTo
     while (true) {
       let q = supabase.from('bookings')
-        .select('*, customers(customer_name, type, credit_limit, credit_balance, overpayment_balance), payments(*, bank_accounts(bank_name, account_name)), medical_cases(actual_count), special_exams(total_amount)')
+        .select('*, customers(customer_name, type, credit_limit, credit_balance, overpayment_balance), payments(*, bank_accounts(bank_name, account_name)), medical_cases(actual_count), special_exams(*, special_exam_items(*))')
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
@@ -97,7 +97,6 @@ export default function Payments() {
       from += 1000
     }
 
-    // ดึงข้อมูลสลิปแยก ผูกกับแต่ละ booking ผ่าน payment_id เพื่อโชว์สถานะแนบสลิป/ยังไม่แนบในตารางหลัก
     const paymentIds = all.flatMap((b: any) => {
       const p = getP(b)
       return p?.id ? [p.id] : []
@@ -122,17 +121,16 @@ export default function Payments() {
   }
 
   const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
-
-  // รองรับทั้ง 2 กรณี: payments เป็น array (ปกติเวลามีได้หลายแถว) หรือเป็น object เดี่ยว
-  // (Supabase จะส่งมาเป็น object เดี่ยวถ้า column booking_id มี UNIQUE constraint ผูกอยู่)
   const getP = (b: any) => Array.isArray(b?.payments) ? b.payments?.[0] : b?.payments
 
   const getSpecialTotal = (b: any) => {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_amount || 0), 0)
   }
 
-  // ค่าข้าวไฟล์ทบิน = ราคา/มื้อ x จำนวนมื้อ x จำนวนคนที่จอง (เก็บอยู่บนตาราง bookings โดยตรง)
-  // สำคัญ: ค่าข้าวนี้ไม่คิด VAT และไม่เป็นฐานคำนวณหัก ณ ที่จ่าย เด็ดขาด — คำนวณแยกจากยอดตรวจเสมอ
+  const getSpecialWorkers = (b: any) => {
+    return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_workers || 0), 0)
+  }
+
   const getMealTotal = (b: any) => {
     return (b.meal_price || 0) * (b.meal_count || 0) * (b.booked_count || 0)
   }
@@ -140,15 +138,15 @@ export default function Payments() {
   const getNormalTotalWithVat = (p: any) => {
     const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
     if (!p?.use_vat) return workerTotal
-    if (p.vat_mode === 'inclusive') return workerTotal // ราคารวม VAT แล้ว ไม่บวกซ้ำ
-    return Math.round(workerTotal * 1.07 * 100) / 100 // ราคา + VAT บวกเพิ่ม
+    if (p.vat_mode === 'inclusive') return workerTotal
+    return Math.round(workerTotal * 1.07 * 100) / 100
   }
 
   const getGrandTotal = (b: any) => {
     const p = getP(b)
     const normalWithVat = getNormalTotalWithVat(p)
     const specialTotal = getSpecialTotal(b)
-    const mealTotal = getMealTotal(b) // ไม่ผ่าน VAT
+    const mealTotal = getMealTotal(b)
     return Math.round((normalWithVat + specialTotal + mealTotal) * 100) / 100
   }
 
@@ -164,11 +162,11 @@ export default function Payments() {
     const actualCount = mc?.actual_count || booking.booked_count || 0
     setForm({
       amount_received: p?.amount_received ?? 0,
-      amountTouched: p?.id ? true : false, // ถ้าเคยบันทึกแล้ว ถือว่าค่านี้คือค่าจริงที่กรอกมา ไม่ใช่ default
+      amountTouched: p?.id ? true : false,
       method: p?.method || 'transfer',
       payment_status: p?.payment_status || 'ยังไม่ชำระ',
       invoice_no: p?.invoice_no || '',
-      worker_count: p?.worker_count || actualCount,
+      worker_count: (mc?.actual_count && mc.actual_count > 0) ? mc.actual_count : (p?.worker_count || actualCount),
       price_per_worker: p?.price_per_worker || 0,
       ref_no: p?.ref_no || '',
       note: p?.note || '',
@@ -189,7 +187,6 @@ export default function Payments() {
   const normalTotal = form.worker_count * form.price_per_worker
   const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
   const mealAmountSelected = selected ? getMealTotal(selected) : 0
-  // VAT คิดจากยอดตรวจสุขภาพปกติ (normalTotal) เท่านั้น — ค่าข้าวและตรวจพิเศษไม่รวมในฐาน VAT
   const vatBase = form.use_vat
     ? (form.vat_mode === 'inclusive' ? normalTotal / 1.07 : normalTotal)
     : normalTotal
@@ -201,15 +198,12 @@ export default function Payments() {
     : normalTotal
   const grandTotalSelected = normalTotalWithVat + specialAmountSelected + mealAmountSelected
 
-  // หัก ณ ที่จ่าย 3% — คิดจากฐานเดียวกับ VAT (ยอดตรวจก่อน VAT) เท่านั้น ไม่รวมค่าข้าว/ตรวจพิเศษ
   const whtAmount = form.use_wht ? Math.round(vatBase * 0.03 * 100) / 100 : 0
 
-  // ===== ยอดเครดิตสะสม (จากการโอนเกินครั้งก่อน) =====
   const selectedPayment = getP(selected)
   const prevCreditUsed = selectedPayment?.credit_used || 0
   const prevCreditDeposited = selectedPayment?.credit_deposited || 0
   const creditAvailableRaw = selected?.customers?.overpayment_balance || 0
-  // ยอดสูงสุดที่หักได้ = เครดิตที่เหลือ + เครดิตที่ payment นี้เคยหักไปแล้ว (เผื่อแก้ไขซ้ำ) แต่ไม่เกินยอดที่ต้องจ่าย
   const maxUsableCredit = Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
   const creditUsed = form.credit_toggle ? Math.min(form.credit_used || 0, maxUsableCredit) : 0
   const netDue = Math.max(Math.round((grandTotalSelected - creditUsed - whtAmount) * 100) / 100, 0)
@@ -218,7 +212,6 @@ export default function Payments() {
   const creditDeposited = (excess > 0 && form.keep_excess_credit) ? excess : 0
 
   const handleSave = async () => {
-    // กันกดปุ่มซ้ำ (double-click) ซึ่งเคยทำให้เกิด payment ซ้ำ 2 แถวสำหรับจองเดียวกัน
     if (savingPayment) return
     setSavingPayment(true)
     const p = getP(selected)
@@ -249,7 +242,6 @@ export default function Payments() {
       paymentId = inserted?.id
     }
 
-    // ปรับยอดเครดิตสะสมของลูกค้า เฉพาะส่วนต่างจากค่าที่เคยบันทึกไว้ก่อนหน้า (กันนับซ้ำเวลาแก้ไขรายการเดิม)
     const creditUsedDelta = Math.round((creditUsed - prevCreditUsed) * 100) / 100
     const creditDepositedDelta = Math.round((creditDeposited - prevCreditDeposited) * 100) / 100
     const balanceDelta = Math.round((creditDepositedDelta - creditUsedDelta) * 100) / 100
@@ -278,42 +270,29 @@ export default function Payments() {
     setSavingPayment(false)
   }
 
-  // อัปโหลดไฟล์ผ่าน API กลาง (/api/upload) ซึ่งจะส่งไฟล์ต่อไปเก็บที่ Google Cloud Storage
-  // (แทนที่การอัปโหลดขึ้น Supabase Storage โดยตรงแบบเดิม)
   const uploadFileToGCS = async (file: File, folder: string): Promise<{ url: string, fileName: string } | null> => {
     try {
-      // 1. ขอ "ลิงก์อัปโหลดชั่วคราว" จาก backend ก่อน (ส่งแค่ชื่อไฟล์ ไม่ใช่ตัวไฟล์ ไม่มีทางติด limit ของ Vercel)
       const res = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: file.name, folder, contentType: file.type || 'application/octet-stream' }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        console.error('ขอลิงก์อัปโหลดไม่สำเร็จ:', err)
-        return null
-      }
+      if (!res.ok) return null
       const { uploadUrl, publicUrl, fileName } = await res.json()
 
-      // 2. อัปโหลดไฟล์จริง "ตรงไปที่ Google Cloud Storage เลย" ไม่ผ่าน Vercel อีกต่อไป
       const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       })
-      if (!uploadRes.ok) {
-        console.error('อัปโหลดไป GCS ไม่สำเร็จ:', uploadRes.status)
-        return null
-      }
+      if (!uploadRes.ok) return null
 
       return { url: publicUrl, fileName }
     } catch (err) {
-      console.error('อัปโหลดไม่สำเร็จ:', err)
       return null
     }
   }
 
-  // อัพโหลดได้ทีละหลายไฟล์ ถ้ายังไม่มี payment ให้สร้างก่อนแบบเงียบๆ
   const handleUploadSlip = async (e: any) => {
     const files: File[] = Array.from(e.target.files || [])
     if (files.length === 0) return
@@ -346,16 +325,13 @@ export default function Payments() {
     if (paymentId) fetchSlips(paymentId)
   }
 
-  // ===== เปิด modal ตัดชำระหลายจอง =====
-  // ดึงข้อมูลจองที่ยังไม่ชำระ "ทั้งหมด" ใหม่ทุกครั้ง (ไม่ผูกกับตัวกรองวันที่ของหน้าหลัก)
-  // เพื่อให้ค้นหาลูกค้าที่จองไว้นานแล้วเจอด้วย
   const openSplitModal = async () => {
     setSplitLoading(true)
     let all: any[] = []
     let from = 0
     while (true) {
       const { data } = await supabase.from('bookings')
-        .select('id, case_number, booking_date, customer_id, meal_price, meal_count, booked_count, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount)')
+        .select('id, case_number, booking_date, customer_id, meal_price, meal_count, booked_count, customers(customer_name), payments(id, payment_status, worker_count, price_per_worker, use_vat, vat_mode), special_exams(total_amount, total_workers)')
         .order('booking_date', { ascending: false })
         .range(from, from + 999)
       if (!data || data.length === 0) break
@@ -385,12 +361,10 @@ export default function Payments() {
     setShowSplitModal(true)
   }
 
-  // แก้ไขรายการทีละตัวโดยอ้างอิงจาก booking_id (ไม่ใช้ index) เพราะรายการที่แสดงอาจถูกกรองอยู่
   const updateSplitItem = (bookingId: string, patch: any) => {
     setSplitPayments(prev => prev.map(sp => sp.booking_id === bookingId ? { ...sp, ...patch } : sp))
   }
 
-  // รายการที่แสดงผลหลังกรองด้วยชื่อลูกค้า/เลขจอง และช่วงวันที่
   const filteredSplitPayments = splitPayments.filter((sp) => {
     if (splitSearch && !(sp.customer_name || '').includes(splitSearch) && !(sp.case_number || '').includes(splitSearch)) return false
     if (splitDateFrom && sp.booking_date < splitDateFrom) return false
@@ -398,7 +372,6 @@ export default function Payments() {
     return true
   })
 
-  // แบ่งยอดที่โอนมาทั้งก้อน ไปตัดตามรายการที่ติ๊กเลือกไว้ เรียงจากบนลงล่าง จนกว่ายอดจะหมด
   const autoDistributeSplit = () => {
     let remaining = Number(splitTotalReceived) || 0
     setSplitPayments(prev => prev.map(sp => {
@@ -415,7 +388,6 @@ export default function Payments() {
     if (selectedItems.length === 0) return
     setSplitSaving(true)
 
-    // อัพโหลดสลิปครั้งเดียว แล้วผูกกับทุกรายการที่เลือก
     let slipUrl: string | null = null
     let slipFileName: string | null = null
     if (splitSlipFile) {
@@ -493,6 +465,7 @@ export default function Payments() {
       const p = getP(b)
       const mc = getMc(b)
       const specialAmt = getSpecialTotal(b)
+      const specialWorkers = getSpecialWorkers(b)
       const mealAmt = getMealTotal(b)
       const grandTotal = getGrandTotal(b)
       return {
@@ -502,6 +475,7 @@ export default function Payments() {
         'จำนวนแรงงาน': p?.worker_count || mc?.actual_count || 0,
         'ราคา/คน': p?.price_per_worker || 0,
         'ยอดปกติ': (p?.worker_count || 0) * (p?.price_per_worker || 0),
+        'จำนวนตรวจพิเศษ (คน)': specialWorkers,
         'ยอดตรวจพิเศษ': specialAmt,
         'ค่าข้าวไฟล์ทบิน': mealAmt,
         'ยอดรวม': grandTotal,
@@ -554,6 +528,7 @@ export default function Payments() {
           </div>
         </div>
 
+        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
@@ -656,6 +631,7 @@ export default function Payments() {
           </div>
         </div>
 
+        {/* 🔹 Table แสดงผลหลัก */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
           <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span>เลขจอง</span><span>ลูกค้า</span><span>วันที่</span>
@@ -674,6 +650,7 @@ export default function Payments() {
             const workerCount = p?.worker_count || mc?.actual_count || b.booked_count || 0
             const normalAmt = (p?.worker_count || 0) * (p?.price_per_worker || 0)
             const specialAmt = getSpecialTotal(b)
+            const specialWorkers = getSpecialWorkers(b)
             const mealAmt = getMealTotal(b)
             const grandTotal = getGrandTotal(b)
             return (
@@ -695,7 +672,7 @@ export default function Payments() {
                 <div>
                   {specialAmt > 0 ? (
                     <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-0.5 w-fit">
-                      <IconMicroscope size={10}/>฿{specialAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      <IconMicroscope size={10}/>{specialWorkers > 0 ? `${specialWorkers}คน ` : ''}฿{specialAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </span>
                   ) : null}
                   {mealAmt > 0 && (
@@ -848,7 +825,7 @@ export default function Payments() {
                   )}
                   {specialAmountSelected > 0 && (
                     <div className="flex justify-between text-xs text-purple-600">
-                      <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ</span>
+                      <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ ({getSpecialWorkers(selected)} คน)</span>
                       <span className="font-medium">฿{specialAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}
@@ -1037,7 +1014,6 @@ export default function Payments() {
               <button onClick={() => setShowSplitModal(false)} className="text-gray-400 hover:text-gray-600"><IconX size={20}/></button>
             </div>
 
-            {/* ค้นหา / กรอง */}
             <div className="p-4 border-b border-gray-100 grid grid-cols-4 gap-3">
               <div className="col-span-2">
                 <label className="text-xs text-gray-500 mb-1 block">ค้นหาลูกค้า หรือเลขจอง</label>
@@ -1060,7 +1036,6 @@ export default function Payments() {
               </div>
             </div>
 
-            {/* ยอดโอนจริง + วิธีชำระ + สลิป */}
             <div className="p-4 border-b border-gray-100 grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ยอดที่ลูกค้าโอนมาจริง (บาท) — ยอดสลิปเดียว</label>

@@ -6,14 +6,17 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconDownload, IconRefresh, IconCalendar, IconDeviceMobile } from '@tabler/icons-react'
+import { IconDownload, IconRefresh, IconCalendar, IconDeviceMobile, IconMicroscope } from '@tabler/icons-react'
 
 export default function DailyReport() {
   const { user, role, ready, logout } = useAuth('/daily-report')
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bookings, setBookings] = useState<any[]>([])
-  const [summary, setSummary] = useState({ todayBooked: 0, todayActual: 0, todaySim: 0, tomorrowBooked: 0, tomorrowActual: 0, tomorrowSim: 0 })
+  const [summary, setSummary] = useState({ 
+    todayBooked: 0, todayActual: 0, todaySim: 0, todaySpecial: 0,
+    tomorrowBooked: 0, tomorrowActual: 0, tomorrowSim: 0, tomorrowSpecial: 0 
+  })
 
   const today = new Date().toISOString().slice(0,10)
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10)
@@ -42,7 +45,7 @@ export default function DailyReport() {
     setLoading(true)
     const { data } = await supabase
       .from('bookings')
-      .select('*, customers(customer_name), medical_cases(actual_count, exam_date), payments(payment_status, amount_received)')
+      .select('*, customers(customer_name), medical_cases(actual_count, exam_date), payments(payment_status, amount_received), special_exams(*)')
       .gte('booking_date', dateFrom)
       .lte('booking_date', dateTo)
       .order('booking_date', { ascending: true })
@@ -52,21 +55,26 @@ export default function DailyReport() {
       setBookings(data)
       const todayData = data.filter(b => b.booking_date === today)
       const tomorrowData = data.filter(b => b.booking_date === tomorrow)
+
+      const getSpCount = (b: any) => b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
+
       setSummary({
         todayBooked: todayData.reduce((s,b) => s + (b.booked_count || 0), 0),
         todayActual: todayData.reduce((s,b) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0),
         todaySim: todayData.reduce((s,b) => s + (b.sim_count || 0), 0),
+        todaySpecial: todayData.reduce((s,b) => s + getSpCount(b), 0),
         tomorrowBooked: tomorrowData.reduce((s,b) => s + (b.booked_count || 0), 0),
         tomorrowActual: tomorrowData.reduce((s,b) => s + ((Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.actual_count || 0), 0),
         tomorrowSim: tomorrowData.reduce((s,b) => s + (b.sim_count || 0), 0),
+        tomorrowSpecial: tomorrowData.reduce((s,b) => s + getSpCount(b), 0),
       })
     }
     setLoading(false)
   }
 
   const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
+  const getSpCount = (b: any) => b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
 
-  // ดึงรายการ Type ที่มีอยู่จริงจากข้อมูล แทนการเขียนตายตัว กันเคสมี Type ใหม่แล้วไม่โผล่ใน filter
   const availableTypes = Array.from(new Set(bookings.map(b => b.service_type).filter(Boolean))).sort()
 
   const filtered = bookings.filter(b => {
@@ -86,6 +94,7 @@ export default function DailyReport() {
 
   const totalBooked = filtered.reduce((s,b) => s + (b.booked_count || 0), 0)
   const totalActual = filtered.reduce((s,b) => s + (getMc(b)?.actual_count || 0), 0)
+  const totalSpecial = filtered.reduce((s,b) => s + getSpCount(b), 0)
   const totalSim = filtered.reduce((s,b) => s + (b.sim_count || 0), 0)
 
   const grouped: any = {}
@@ -105,6 +114,7 @@ export default function DailyReport() {
       'เวลา': b.exam_time || '',
       'ยอดจอง': b.booked_count || 0,
       'ยอดตรวจจริง': getMc(b)?.actual_count ?? '',
+      'ยอดตรวจพิเศษ': getSpCount(b),
       'ยอดซิม': b.sim_count || 0,
       'สถานะเงิน': b.payments?.[0]?.payment_status || 'ยังไม่ชำระ',
     }))
@@ -137,6 +147,7 @@ export default function DailyReport() {
           </button>
         </div>
 
+        {/* Filters */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
           <div className="flex items-end gap-3 mb-3">
             <div>
@@ -234,43 +245,55 @@ export default function DailyReport() {
           </div>
         </div>
 
-        <div className="grid grid-cols-6 gap-3 mb-4">
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+        {/* 🔹 Banner Summary เพิ่มตรวจพิเศษ */}
+        <div className="grid grid-cols-8 gap-3 mb-4">
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
             <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconCalendar size={11}/>ยอดจองวันนี้</p>
-            <p className="text-2xl font-bold text-[#185FA5]">{summary.todayBooked.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">คน</p>
+            <p className="text-xl font-bold text-[#185FA5]">{summary.todayBooked.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
           </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
             <p className="text-xs text-gray-400 font-medium mb-1">ยอดตรวจวันนี้</p>
-            <p className="text-2xl font-bold text-emerald-600">{summary.todayActual.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">คน</p>
+            <p className="text-xl font-bold text-emerald-600">{summary.todayActual.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
           </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconDeviceMobile size={11}/>ยอดขายซิมวันนี้</p>
-            <p className="text-2xl font-bold text-sky-600">{summary.todaySim.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">ซิม</p>
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
+            <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconMicroscope size={11}/>ตรวจพิเศษวันนี้</p>
+            <p className="text-xl font-bold text-purple-600">{summary.todaySpecial.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
           </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
+            <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconDeviceMobile size={11}/>ซิมวันนี้</p>
+            <p className="text-xl font-bold text-sky-600">{summary.todaySim.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">ซิม</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
             <p className="text-xs text-gray-400 font-medium mb-1">ยอดจองพรุ่งนี้</p>
-            <p className="text-2xl font-bold text-gray-700">{summary.tomorrowBooked.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">คน</p>
+            <p className="text-xl font-bold text-gray-700">{summary.tomorrowBooked.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
           </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
             <p className="text-xs text-gray-400 font-medium mb-1">ยอดตรวจพรุ่งนี้</p>
-            <p className="text-2xl font-bold text-gray-700">{summary.tomorrowActual.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">คน</p>
+            <p className="text-xl font-bold text-gray-700">{summary.tomorrowActual.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
           </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconDeviceMobile size={11}/>ยอดขายซิมพรุ่งนี้</p>
-            <p className="text-2xl font-bold text-gray-700">{summary.tomorrowSim.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">ซิม</p>
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
+            <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconMicroscope size={11}/>ตรวจพิเศษพรุ่งนี้</p>
+            <p className="text-xl font-bold text-purple-600">{summary.tomorrowSpecial.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
+            <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconDeviceMobile size={11}/>ซิมพรุ่งนี้</p>
+            <p className="text-xl font-bold text-gray-700">{summary.tomorrowSim.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">ซิม</p>
           </div>
         </div>
 
+        {/* 🔹 Table สรุป */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
+          <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
             <span className="col-span-2">ลูกค้า</span><span>กะ</span><span className="col-span-2">สถานที่</span>
-            <span>Type</span><span>เวลา</span><span>ยอดจอง</span><span>ยอดตรวจ</span><span>ยอดซิม</span>
+            <span>Type</span><span>เวลา</span><span>ยอดจอง</span><span>ยอดตรวจ</span><span>ตรวจพิเศษ</span><span>ยอดซิม</span>
           </div>
 
           {loading ? (
@@ -284,6 +307,7 @@ export default function DailyReport() {
             const dayBookings = grouped[date]
             const dayBooked = dayBookings.reduce((s:number,b:any) => s + (b.booked_count || 0), 0)
             const dayActual = dayBookings.reduce((s:number,b:any) => s + (getMc(b)?.actual_count || 0), 0)
+            const daySpecial = dayBookings.reduce((s:number,b:any) => s + getSpCount(b), 0)
             const daySim = dayBookings.reduce((s:number,b:any) => s + (b.sim_count || 0), 0)
             const isToday = date === today
             const isTomorrow = date === tomorrow
@@ -300,13 +324,15 @@ export default function DailyReport() {
                   <div className="flex items-center gap-4">
                     <span className="text-xs text-gray-500">จอง: <span className="font-bold text-gray-700">{dayBooked}</span></span>
                     <span className="text-xs text-gray-500">ตรวจจริง: <span className="font-bold text-emerald-600">{dayActual}</span></span>
+                    <span className="text-xs text-gray-500">ตรวจพิเศษ: <span className="font-bold text-purple-600">{daySpecial}</span></span>
                     <span className="text-xs text-gray-500">ซิม: <span className="font-bold text-sky-600">{daySim}</span></span>
                   </div>
                 </div>
                 {dayBookings.map((b: any) => {
                   const actual = getMc(b)?.actual_count
+                  const spCount = getSpCount(b)
                   return (
-                    <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-blue-50/20 transition-colors items-center">
+                    <div key={b.id} className="grid grid-cols-11 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-blue-50/20 transition-colors items-center">
                       <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>
                       <span className="text-xs">
                         <span className={`px-1.5 py-0.5 rounded-md text-xs font-medium ${b.shift === 'เช้า' ? 'bg-yellow-50 text-yellow-700' : b.shift === 'บ่าย' ? 'bg-orange-50 text-orange-600' : 'bg-purple-50 text-purple-600'}`}>
@@ -318,6 +344,7 @@ export default function DailyReport() {
                       <span className="text-xs text-gray-500">{b.exam_time || '-'}</span>
                       <span className="text-xs font-medium text-gray-700">{b.booked_count || '-'}</span>
                       <span className="text-xs font-bold text-emerald-600">{actual ?? <span className="text-gray-300">-</span>}</span>
+                      <span className="text-xs font-bold text-purple-600">{spCount > 0 ? spCount : <span className="text-gray-300">-</span>}</span>
                       <span className="text-xs font-bold text-sky-600">{b.sim_count > 0 ? b.sim_count : <span className="text-gray-300">-</span>}</span>
                     </div>
                   )
@@ -327,10 +354,11 @@ export default function DailyReport() {
           })}
 
           {filtered.length > 0 && (
-            <div className="grid grid-cols-10 gap-2 px-5 py-3 bg-gray-800 text-xs font-bold text-white">
+            <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-800 text-xs font-bold text-white">
               <span className="col-span-7">รวมทั้งหมด</span>
               <span>{totalBooked.toLocaleString()}</span>
               <span className="text-emerald-400">{totalActual.toLocaleString()}</span>
+              <span className="text-purple-300">{totalSpecial.toLocaleString()}</span>
               <span className="text-sky-400">{totalSim.toLocaleString()}</span>
             </div>
           )}
