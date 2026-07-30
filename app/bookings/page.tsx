@@ -202,9 +202,10 @@ export default function Bookings() {
       fetchBookings()
     } catch (err: any) {
       setDeleteError(err?.message || 'ลบไม่สำเร็จ มีข้อมูลบางอย่างผูกอยู่ที่ยังลบไม่ได้')
-    } fontally {
+    } finally {
       setDeleting(false)
     }
+    
   }
 
   const getPaymentStatus = (b: any) => {
