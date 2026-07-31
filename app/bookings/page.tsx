@@ -22,6 +22,9 @@ const emptyForm = {
   special_exam_count: 0, // 🔹 เพิ่มยอดตรวจพิเศษ
   sim_true_status: 'รอคำตอบลูกค้า',
   sim_items: [] as any[],
+  // หมายเหตุ: field ชื่อ meal_count ยังคงเดิมในระดับโค้ด/DB (ไม่ได้ rename)
+  // แต่ตั้งแต่ตอนนี้ความหมายของมันเปลี่ยนจาก "จำนวนมื้อต่อคน" เป็น "จำนวนกล่องข้าวทั้งหมด"
+  // เพราะจำนวนกล่องข้าวไม่จำเป็นต้องเท่ากับจำนวนคนที่จองอีกต่อไป
   meal_price: 0, meal_count: 0,
   admin_note: ''
 }
@@ -537,10 +540,11 @@ export default function Bookings() {
                         <p className="text-xs text-gray-400 mb-0.5">ซิมทรู</p>
                         <p className="text-xs font-medium text-gray-700">{b.sim_true_status || '-'}</p>
                       </div>
+                      {/* 🔹 ค่าข้าวไฟล์ทบิน — คำนวณจาก ราคา × จำนวนกล่อง เท่านั้น (ไม่คูณ booked_count แล้ว) */}
                       {b.service_type === 'ไฟล์ทบิน' && b.meal_price > 0 && (
                         <div className="col-span-2">
                           <p className="text-xs text-gray-400 mb-0.5">ค่าข้าวไฟล์ทบิน</p>
-                          <p className="text-xs font-medium text-sky-600">฿{b.meal_price} × {b.meal_count} มื้อ × {b.booked_count} คน = ฿{(b.meal_price * b.meal_count * b.booked_count).toLocaleString()}</p>
+                          <p className="text-xs font-medium text-sky-600">฿{b.meal_price} × {b.meal_count} กล่อง = ฿{(b.meal_price * b.meal_count).toLocaleString()}</p>
                         </div>
                       )}
                       {b.location_url && (
@@ -619,19 +623,20 @@ export default function Bookings() {
                 </select>
               </div>
 
+              {/* 🔹 ค่าข้าวไฟล์ทบิน — เปลี่ยนช่องขวาจาก "จำนวนมื้อ" เป็น "จำนวนกล่อง" และตัดการคูณ booked_count ออก */}
               {form.service_type === 'ไฟล์ทบิน' && (
                 <div className="bg-sky-50 border border-sky-100 rounded-xl p-4">
                   <p className="text-xs font-semibold text-sky-700 mb-3">✈️ ค่าข้าวไฟล์ทบิน</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">ค่าข้าว (บาท/มื้อ)</label>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">ค่าข้าว (บาท/กล่อง)</label>
                       <input type="text" inputMode="numeric" value={form.meal_price || ''}
                         onChange={(e) => setForm({...form, meal_price: Number(e.target.value.replace(/\D/g,''))})}
                         placeholder="0"
                         className="w-full border border-sky-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"/>
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">จำนวนมื้อ</label>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">จำนวนกล่อง</label>
                       <input type="text" inputMode="numeric" value={form.meal_count || ''}
                         onChange={(e) => setForm({...form, meal_count: Number(e.target.value.replace(/\D/g,''))})}
                         placeholder="0"
@@ -640,8 +645,8 @@ export default function Bookings() {
                   </div>
                   {form.meal_price > 0 && form.meal_count > 0 && (
                     <p className="text-xs text-sky-600 mt-2 font-medium">
-                      รวมค่าข้าว: ฿{(form.meal_price * form.meal_count * (form.booked_count || 1)).toLocaleString()}
-                      <span className="text-sky-400 ml-1">({form.meal_price} × {form.meal_count} มื้อ × {form.booked_count || 1} คน)</span>
+                      รวมค่าข้าว: ฿{(form.meal_price * form.meal_count).toLocaleString()}
+                      <span className="text-sky-400 ml-1">({form.meal_price} × {form.meal_count} กล่อง)</span>
                     </p>
                   )}
                 </div>

@@ -31,6 +31,14 @@ export default function SpecialExams() {
   const [newExamName, setNewExamName] = useState('')
   const [newExamPrice, setNewExamPrice] = useState('')
 
+  // 🔹 ตัวกรองเพิ่มเติม
+  const [filterCaseNumber, setFilterCaseNumber] = useState('')
+  const [filterLocation, setFilterLocation] = useState('')
+  const [filterWorkersMin, setFilterWorkersMin] = useState('')
+  const [filterWorkersMax, setFilterWorkersMax] = useState('')
+  const [filterExamType, setFilterExamType] = useState('')
+  const [filterHasBooking, setFilterHasBooking] = useState('')
+
   const [form, setForm] = useState({
     customer_id: '', customer_name_display: '',
     booking_id: '',
@@ -240,10 +248,21 @@ export default function SpecialExams() {
     fetchExamTypes()
   }
 
+  // 🔹 ตัวกรองครบชุด: ลูกค้า, ช่วงวันที่, เลขจอง, สถานที่, จำนวนแรงงาน min/max, รายการตรวจ, มี/ไม่มี booking ผูก
   const filtered = exams.filter(e => {
     if (search && !e.customers?.customer_name?.includes(search)) return false
     if (filterDateFrom && e.exam_date < filterDateFrom) return false
     if (filterDateTo && e.exam_date > filterDateTo) return false
+    if (filterCaseNumber && !e.bookings?.case_number?.toLowerCase().includes(filterCaseNumber.toLowerCase())) return false
+    if (filterLocation && e.location_name !== filterLocation) return false
+    if (filterWorkersMin && (e.total_workers || 0) < Number(filterWorkersMin)) return false
+    if (filterWorkersMax && (e.total_workers || 0) > Number(filterWorkersMax)) return false
+    if (filterExamType) {
+      const hasType = e.special_exam_items?.some((i: any) => i.exam_type_id === filterExamType && i.quantity > 0)
+      if (!hasType) return false
+    }
+    if (filterHasBooking === 'มี' && !e.booking_id) return false
+    if (filterHasBooking === 'ไม่มี' && e.booking_id) return false
     return true
   })
 
@@ -284,6 +303,13 @@ export default function SpecialExams() {
     c.customer_name?.includes(customerSearch) || c.line_name?.includes(customerSearch)
   )
 
+  const clearFilters = () => {
+    setSearch(''); setFilterDateFrom(''); setFilterDateTo('')
+    setFilterCaseNumber(''); setFilterLocation('')
+    setFilterWorkersMin(''); setFilterWorkersMax('')
+    setFilterExamType(''); setFilterHasBooking('')
+  }
+
   if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
@@ -294,7 +320,7 @@ export default function SpecialExams() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <p className="text-base font-semibold text-gray-800">ตรวจพิเศษ</p>
-            <p className="text-xs text-gray-400 mt-0.5">บันทึกการตรวจพิเศษ</p>
+            <p className="text-xs text-gray-400 mt-0.5">บันทึกการตรวจพิเศษ · {filtered.length} รายการ</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowSettingsModal(true)} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
@@ -309,21 +335,71 @@ export default function SpecialExams() {
           </div>
         </div>
 
-        {/* Filters */}
+        {/* 🔹 Filters — เพิ่มตัวกรองครบชุด: เลขจอง, สถานที่, จำนวนแรงงาน, รายการตรวจ, สถานะผูก booking */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm">
-          <div className="flex gap-3">
-            <div className="relative flex-1">
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            <div className="relative">
               <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
               <input type="text" placeholder="ค้นหาลูกค้า..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
             </div>
-            <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
-            <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
-            <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo('') }}
-              className="text-xs text-[#185FA5] hover:underline px-2">ล้าง</button>
+            <div>
+              <input type="text" placeholder="ค้นหาเลขจอง..."
+                value={filterCaseNumber} onChange={(e) => setFilterCaseNumber(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
+              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
+              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+          </div>
+          <div className="grid grid-cols-5 gap-3 pt-3 border-t border-gray-50">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">สถานที่</label>
+              <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">รายการตรวจ</label>
+              <select value={filterExamType} onChange={(e) => setFilterExamType(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                {examTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">แรงงาน (min)</label>
+              <input type="number" value={filterWorkersMin} onChange={(e) => setFilterWorkersMin(e.target.value)}
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">แรงงาน (max)</label>
+              <input type="number" value={filterWorkersMax} onChange={(e) => setFilterWorkersMax(e.target.value)}
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">ผูกกับการจอง</label>
+              <select value={filterHasBooking} onChange={(e) => setFilterHasBooking(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                <option value="">ทั้งหมด</option>
+                <option value="มี">ผูกแล้ว</option>
+                <option value="ไม่มี">ไม่ได้ผูก</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
+            <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
+            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 

@@ -132,8 +132,10 @@ export default function Payments() {
     return (b.special_exams || []).reduce((s: number, e: any) => s + (e.total_workers || 0), 0)
   }
 
+  // 🔹 ค่าข้าวไฟล์ทบิน — คำนวณจาก ราคา × จำนวนกล่อง เท่านั้น (ไม่คูณ booked_count แล้ว
+  // เพราะจำนวนกล่องข้าวไม่จำเป็นต้องเท่ากับจำนวนคนที่จอง)
   const getMealTotal = (b: any) => {
-    return (b.meal_price || 0) * (b.meal_count || 0) * (b.booked_count || 0)
+    return (b.meal_price || 0) * (b.meal_count || 0)
   }
 
   const getNormalTotalWithVat = (p: any) => {
@@ -830,7 +832,7 @@ export default function Payments() {
                   )}
                   {mealAmountSelected > 0 && (
                     <div className="flex justify-between text-xs text-sky-600">
-                      <span>✈️ ค่าข้าวไฟล์ทบิน ({selected.meal_price}×{selected.meal_count}มื้อ×{selected.booked_count}คน) — ไม่รวม VAT</span>
+                      <span>✈️ ค่าข้าวไฟล์ทบิน ({selected.meal_price}×{selected.meal_count}กล่อง) — ไม่รวม VAT</span>
                       <span className="font-medium">฿{mealAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}

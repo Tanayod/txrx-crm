@@ -178,8 +178,9 @@ export default function Invoices() {
   const rawTotal = actualCount * pricePerHead
   const subtotal = useVat && vatMode === 'inclusive' ? Math.round((rawTotal / 1.07) * 100) / 100 : rawTotal
   const vatAmount = useVat ? (vatMode === 'inclusive' ? Math.round((rawTotal - subtotal) * 100) / 100 : Math.round(subtotal * 0.07 * 100) / 100) : 0
-  // ค่าข้าวไฟล์ทบิน — เก็บอยู่บน booking โดยตรง ไม่คิด VAT และไม่เป็นฐานหัก ณ ที่จ่าย
-  const mealTotal = selected ? (selected.meal_price || 0) * (selected.meal_count || 0) * (selected.booked_count || 0) : 0
+  // 🔹 ค่าข้าวไฟล์ทบิน — คำนวณจาก ราคา × จำนวนกล่อง เท่านั้น (ไม่คูณ booked_count แล้ว
+  // เพราะจำนวนกล่องข้าวไม่จำเป็นต้องเท่ากับจำนวนคนที่จอง) ไม่คิด VAT และไม่เป็นฐานหัก ณ ที่จ่าย
+  const mealTotal = selected ? (selected.meal_price || 0) * (selected.meal_count || 0) : 0
   // หัก ณ ที่จ่าย 3% คิดจาก subtotal (ค่าตรวจก่อน VAT) เท่านั้น เหมือนฐาน VAT
   const whtAmount = useWht ? Math.round(subtotal * 0.03 * 100) / 100 : 0
   const total = (useVat && vatMode === 'inclusive' ? rawTotal : Math.round((subtotal + vatAmount) * 100) / 100) + mealTotal
@@ -324,7 +325,7 @@ export default function Invoices() {
                     <tr className="border-b border-gray-100">
                       <td className="px-4 py-4">
                         <p className="font-semibold text-gray-800">✈️ ค่าอาหารระหว่างเดินทาง (ไฟล์ทบิน)</p>
-                        <p className="text-sm text-gray-500">฿{selected.meal_price} x {selected.meal_count} มื้อ x {selected.booked_count} คน</p>
+                        <p className="text-sm text-gray-500">฿{selected.meal_price} x {selected.meal_count} กล่อง</p>
                       </td>
                       <td className="px-4 py-4 text-right text-sm text-gray-400">-</td>
                       <td className="px-4 py-4 text-right font-semibold text-gray-800">฿{fmt(mealTotal)}</td>
@@ -489,7 +490,7 @@ export default function Invoices() {
                     <tr className="border-b border-gray-100">
                       <td className="px-4 py-4">
                         <p className="font-semibold text-gray-800">✈️ ค่าอาหารระหว่างเดินทาง (ไฟล์ทบิน)</p>
-                        <p className="text-xs text-gray-500">฿{selected.meal_price} x {selected.meal_count} มื้อ x {selected.booked_count} คน</p>
+                        <p className="text-xs text-gray-500">฿{selected.meal_price} x {selected.meal_count} กล่อง</p>
                       </td>
                       <td className="px-4 py-4 text-right text-sm">1.00</td>
                       <td className="px-4 py-4 text-right text-sm text-gray-400">-</td>
