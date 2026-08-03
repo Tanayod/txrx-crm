@@ -32,7 +32,7 @@ export default function Dashboard() {
     utilization: 0,
     activeCustomers: 0, totalCustomers: 0,
     repeatRate: 0,
-    pendingPayments: 0, overdueCerts: 0,
+    pendingPayments: 0, overdueCerts: 0, allPendingCerts: 0,
     revenue: 0, prevRevenue: 0,
     rangeTotal: 0, prevRangeTotal: 0,
     // 🔹 4 เสาหลักเพิ่มเติม
@@ -211,18 +211,18 @@ export default function Dashboard() {
       agingFrom += 1000
     }
 
+    // 🔹 คำนวณรายการ "ค้างส่ง" ทั้งหมด (ไม่กรองวันที่) แล้วค่อยติดป้าย isOverdue แยกไว้
+    //    เพื่อให้เอาไปแยกแสดงได้ทั้ง 2 แบบ: "เกินกำหนดจริง" และ "รอส่งทั้งหมด" (รวมที่ยังไม่เกินกำหนด)
     const agingList = (allYearMedical || [])
       .map(b => {
         const mc = getMc(b)
         const actual = mc?.actual_count || 0
         const certSent = mc?.cert_count || 0
-        // ✅ แก้ไข: ถ้ายังไม่เคยบันทึก "จำนวนตรวจจริง" เลย (actual_count ยังเป็น 0/ว่าง)
+        // ✅ ถ้ายังไม่เคยบันทึก "จำนวนตรวจจริง" เลย (actual_count ยังเป็น 0/ว่าง)
         // ไม่ควรฟันธงว่ามีเคสค้างส่ง เพราะยังไม่มีข้อมูลให้เทียบ
-        // (เช็คจาก actual > 0 แทนการเช็ค mc?.id เพียงอย่างเดียว เผื่อกรณี query ไม่ได้ select id มาครบ)
         const pending = actual > 0 ? Math.max(actual - certSent, 0) : 0
 
-        // ✅ แก้ไข: ใช้ exam_date (วันที่ตรวจจริง) เป็นตัวตั้งในการนับวัน ให้ตรงกับ logic ของหน้า /medical
-        // เดิมใช้ booking_date (วันที่จอง) อย่างเดียว ทำให้ถ้ามีการเลื่อนวันตรวจ ผลจะไม่ตรงกับหน้า /medical
+        // ✅ ใช้ exam_date (วันที่ตรวจจริง) เป็นตัวตั้งในการนับวัน ให้ตรงกับ logic ของหน้า /medical
         const refDate = mc?.exam_date || b.booking_date
         const daysOver = Math.floor((today.getTime() - new Date(refDate).getTime()) / 86400000)
 
@@ -242,12 +242,16 @@ export default function Dashboard() {
           cert_status: mc?.cert_status || 'รอบันทึก'
         }
       })
-      // ✅ แก้ไข: กันสถานะ 'รอข้อมูลแรงงาน' ออกด้วย เพราะเป็นสถานะรอพิเศษ ไม่ใช่เคสค้างส่งจริง
-      .filter(b => b.pending > 0 && b.isOverdue && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน')
-      .sort((a, b) => b.pending - a.pending)
+      // เอาเฉพาะเคสที่ยังส่งใบแพทย์ไม่ครบจริงๆ (ไม่สนใจว่าจะเกินกำหนดหรือยัง) และไม่ใช่สถานะพิเศษ
+      .filter(b => b.pending > 0 && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน')
+      // เรียงให้เคสที่เกินกำหนดขึ้นก่อน แล้วค่อยเรียงตามจำนวนวันที่ค้างมากไปน้อย
+      .sort((a, b) => (Number(b.isOverdue) - Number(a.isOverdue)) || (b.daysOver - a.daysOver))
 
-    const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
-    setAgingCerts(agingList.slice(0, 5))
+    // 🔹 นับ 2 ยอดแยกกัน: "เกินกำหนดจริง" (ต้องรีบส่ง) กับ "รอส่งทั้งหมด" (รวมเคสที่ยังไม่เกินกำหนด)
+    const overdueOnly = agingList.filter(b => b.isOverdue)
+    const totalOverdueCerts = overdueOnly.reduce((s, b) => s + b.pending, 0)
+    const totalAllPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
+    setAgingCerts(agingList.slice(0, 8))
 
     // ยอดหนี้ค้างชำระ
     let allDebtBookings: any[] = []
@@ -396,7 +400,8 @@ export default function Dashboard() {
       totalCustomers: allCustomers?.length || 0,
       repeatRate,
       pendingPayments: pendingData?.length || 0,
-      overdueCerts: totalPendingCerts,
+      overdueCerts: totalOverdueCerts,
+      allPendingCerts: totalAllPendingCerts,
       revenue, prevRevenue,
       rangeTotal, prevRangeTotal,
       rangeBooked: totalBooked,
@@ -643,9 +648,9 @@ export default function Dashboard() {
                 <p className="text-xs text-red-400">รายการ (ยังไม่ชำระ/ค้างชำระ)</p>
               </div>
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 cursor-pointer" onClick={() => window.location.href='/medical'}>
-                <p className="text-xs text-amber-600 font-semibold mb-0.5">รอส่งใบแพทย์</p>
-                <p className="text-2xl font-bold text-amber-500">{kpi.overdueCerts.toLocaleString()}</p>
-                <p className="text-xs text-amber-400">ใบ ที่ยังไม่ได้ส่งให้ลูกค้า</p>
+                <p className="text-xs text-amber-600 font-semibold mb-0.5">รอส่งใบแพทย์ (ทั้งหมด)</p>
+                <p className="text-2xl font-bold text-amber-500">{kpi.allPendingCerts.toLocaleString()}</p>
+                <p className="text-xs text-amber-400">ใบ ที่ยังไม่ได้ส่งให้ลูกค้า{kpi.overdueCerts > 0 ? ` (เกินกำหนด ${kpi.overdueCerts.toLocaleString()} ใบ)` : ''}</p>
               </div>
             </div>
           </div>
@@ -678,27 +683,32 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* 🔹 กล่องใบแพทย์ค้างส่ง (ปรับแก้ไข Logic แล้ว) */}
+          {/* 🔹 กล่องใบแพทย์ค้างส่ง (แสดงทั้ง "เกินกำหนดจริง" และ "รอส่งทั้งหมด") */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-            <div className="flex justify-between items-center mb-1">
-              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">⚠️ ใบแพทย์ที่ค้างส่งเกินกำหนด</p>
-              <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">
-                รอส่งรวม {kpi.overdueCerts.toLocaleString()} ใบ
-              </span>
+            <div className="flex justify-between items-center mb-1 flex-wrap gap-1">
+              <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">⚠️ ใบแพทย์ค้างส่ง</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs bg-red-50 text-red-500 font-semibold px-2 py-0.5 rounded-full">
+                  เกินกำหนด {kpi.overdueCerts.toLocaleString()} ใบ
+                </span>
+                <span className="text-xs bg-amber-50 text-amber-600 font-semibold px-2 py-0.5 rounded-full">
+                  รอส่งทั้งหมด {kpi.allPendingCerts.toLocaleString()} ใบ
+                </span>
+              </div>
             </div>
             <p className="text-xs text-gray-300 mb-3">
-              เคสปกติเกิน 3 วัน / เคสตรวจพิเศษรอผล Lab เกิน 14 วัน (นับจากวันที่ตรวจจริง)
+              สีแดง = เกินกำหนดแล้ว (ปกติเกิน 3 วัน / ตรวจพิเศษเกิน 14 วัน) · สีเหลือง = ยังไม่เกินกำหนดแต่ยังส่งไม่ครบ
             </p>
             <div className="space-y-2">
               {agingCerts.length === 0 && !loading && (
                 <div className="text-center py-6">
                   <p className="text-2xl mb-1">✅</p>
-                  <p className="text-sm text-emerald-600 font-medium">ไม่มีใบแพทย์ค้างส่งเกินกำหนด</p>
-                  <p className="text-xs text-emerald-500 mt-1">เคสตรวจพิเศษรอผล Lab ยังอยู่ในกรอบเวลา 14 วันทำการ</p>
+                  <p className="text-sm text-emerald-600 font-medium">ไม่มีใบแพทย์ค้างส่งเลย</p>
+                  <p className="text-xs text-emerald-500 mt-1">ทุกเคสส่งใบแพทย์ครบแล้ว</p>
                 </div>
               )}
               {agingCerts.map((c, i) => (
-                <div key={i} className="flex items-center justify-between p-2.5 bg-red-50 border border-red-100 rounded-xl">
+                <div key={i} className={`flex items-center justify-between p-2.5 rounded-xl border ${c.isOverdue ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1">
                       <p className="text-xs font-medium text-gray-700 truncate">{c.customer_name}</p>
@@ -707,12 +717,17 @@ export default function Dashboard() {
                           ตรวจพิเศษ
                         </span>
                       )}
+                      {!c.isOverdue && (
+                        <span className="text-[9px] bg-gray-100 text-gray-500 font-medium px-1 rounded flex-shrink-0">
+                          ยังไม่เกินกำหนด
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-400">{c.case_number} · {c.booking_date}</p>
                   </div>
                   <div className="text-right flex-shrink-0 ml-2">
-                    <p className="text-xs font-bold text-red-500">ค้าง {c.pending} ใบ</p>
-                    <span className="text-xs text-red-400 flex items-center gap-0.5 justify-end">
+                    <p className={`text-xs font-bold ${c.isOverdue ? 'text-red-500' : 'text-amber-600'}`}>ค้าง {c.pending} ใบ</p>
+                    <span className={`text-xs flex items-center gap-0.5 justify-end ${c.isOverdue ? 'text-red-400' : 'text-amber-500'}`}>
                       <IconAlertTriangle size={9}/> {c.daysOver} วันที่แล้ว
                     </span>
                   </div>
