@@ -201,7 +201,7 @@ export default function Dashboard() {
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_count, cert_status, exam_date), special_exams(id)')
+        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(id, actual_count, cert_count, cert_status, exam_date), special_exams(id)')
         .gte('booking_date', '2026-01-01')
         .lte('booking_date', todayStr)
         .range(agingFrom, agingFrom + 999)
@@ -216,8 +216,10 @@ export default function Dashboard() {
         const mc = getMc(b)
         const actual = mc?.actual_count || 0
         const certSent = mc?.cert_count || 0
-        // ✅ แก้ไข: ถ้ายังไม่มี medical_cases เลย (ยังไม่เคยบันทึกตรวจจริง) ไม่ควรฟันธงว่ามีเคสค้างส่ง
-        const pending = mc?.id ? Math.max(actual - certSent, 0) : 0
+        // ✅ แก้ไข: ถ้ายังไม่เคยบันทึก "จำนวนตรวจจริง" เลย (actual_count ยังเป็น 0/ว่าง)
+        // ไม่ควรฟันธงว่ามีเคสค้างส่ง เพราะยังไม่มีข้อมูลให้เทียบ
+        // (เช็คจาก actual > 0 แทนการเช็ค mc?.id เพียงอย่างเดียว เผื่อกรณี query ไม่ได้ select id มาครบ)
+        const pending = actual > 0 ? Math.max(actual - certSent, 0) : 0
 
         // ✅ แก้ไข: ใช้ exam_date (วันที่ตรวจจริง) เป็นตัวตั้งในการนับวัน ให้ตรงกับ logic ของหน้า /medical
         // เดิมใช้ booking_date (วันที่จอง) อย่างเดียว ทำให้ถ้ามีการเลื่อนวันตรวจ ผลจะไม่ตรงกับหน้า /medical
