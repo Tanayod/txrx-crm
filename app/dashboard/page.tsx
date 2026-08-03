@@ -194,13 +194,14 @@ export default function Dashboard() {
       renew: renewList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5)
     })
 
-    // 🔹 Aging certs (ปรับเพื่อขจัด False Alarm 14 วัน)
+    // 🔹 Aging certs (แก้ไข: ใช้ exam_date เป็นหลักในการนับวัน ให้ตรงกับหน้า /medical
+    //    และดึง exam_date มาด้วย เพราะเดิมไม่มีคอลัมน์นี้ใน select เลยไม่มีทางคำนวณให้ตรงกันได้)
     let allYearMedical: any[] = []
     let agingFrom = 0
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_count, cert_status), special_exams(id)')
+        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(actual_count, cert_count, cert_status, exam_date), special_exams(id)')
         .gte('booking_date', '2026-01-01')
         .lte('booking_date', todayStr)
         .range(agingFrom, agingFrom + 999)
@@ -215,9 +216,14 @@ export default function Dashboard() {
         const mc = getMc(b)
         const actual = mc?.actual_count || 0
         const certSent = mc?.cert_count || 0
-        const pending = Math.max(actual - certSent, 0)
-        const daysOver = Math.floor((today.getTime() - new Date(b.booking_date).getTime()) / 86400000)
-        
+        // ✅ แก้ไข: ถ้ายังไม่มี medical_cases เลย (ยังไม่เคยบันทึกตรวจจริง) ไม่ควรฟันธงว่ามีเคสค้างส่ง
+        const pending = mc?.id ? Math.max(actual - certSent, 0) : 0
+
+        // ✅ แก้ไข: ใช้ exam_date (วันที่ตรวจจริง) เป็นตัวตั้งในการนับวัน ให้ตรงกับ logic ของหน้า /medical
+        // เดิมใช้ booking_date (วันที่จอง) อย่างเดียว ทำให้ถ้ามีการเลื่อนวันตรวจ ผลจะไม่ตรงกับหน้า /medical
+        const refDate = mc?.exam_date || b.booking_date
+        const daysOver = Math.floor((today.getTime() - new Date(refDate).getTime()) / 86400000)
+
         // เช็คตรวจพิเศษเพื่อขยายเวลาเป็น 14 วัน
         const hasSpecialExam = (b.special_exams && b.special_exams.length > 0)
         const allowedDays = hasSpecialExam ? 14 : 3
@@ -226,7 +232,7 @@ export default function Dashboard() {
         return {
           case_number: b.case_number,
           customer_name: (b.customers as any)?.customer_name,
-          booking_date: b.booking_date,
+          booking_date: refDate, // แสดงวันที่ตรวจจริงในการ์ด ให้ตรงกับตัวที่ใช้คำนวณ
           pending,
           daysOver,
           hasSpecialExam,
@@ -234,7 +240,8 @@ export default function Dashboard() {
           cert_status: mc?.cert_status || 'รอบันทึก'
         }
       })
-      .filter(b => b.pending > 0 && b.isOverdue && b.cert_status !== 'เรียบร้อย')
+      // ✅ แก้ไข: กันสถานะ 'รอข้อมูลแรงงาน' ออกด้วย เพราะเป็นสถานะรอพิเศษ ไม่ใช่เคสค้างส่งจริง
+      .filter(b => b.pending > 0 && b.isOverdue && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน')
       .sort((a, b) => b.pending - a.pending)
 
     const totalPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
@@ -678,7 +685,7 @@ export default function Dashboard() {
               </span>
             </div>
             <p className="text-xs text-gray-300 mb-3">
-              เคสปกติเกิน 3 วัน / เคสตรวจพิเศษรอผล Lab เกิน 14 วัน
+              เคสปกติเกิน 3 วัน / เคสตรวจพิเศษรอผล Lab เกิน 14 วัน (นับจากวันที่ตรวจจริง)
             </p>
             <div className="space-y-2">
               {agingCerts.length === 0 && !loading && (

@@ -352,7 +352,12 @@ export default function Medical() {
               const mc = (Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)
               const certCount = mc?.cert_count ?? null
               const actualCount = mc?.actual_count ?? null
-              const diff = (certCount !== null && actualCount !== null) ? certCount - actualCount : null
+              // ✅ แก้ไข: ต้องมี actual_count ที่ "ถูกกรอกแล้วจริง" (>0) ถึงจะคำนวณผลต่างได้
+              // ถ้ายังไม่มี medical_cases หรือ actual_count ยังเป็น 0/ว่าง แปลว่ายังไม่ได้บันทึกตรวจจริง
+              // ไม่ควรฟันธงว่า "ครบ" หรือ "ขาด" ให้โชว์ "-" แทน
+              const hasActualData = !!mc?.id && actualCount !== null && actualCount > 0
+              const diff = hasActualData ? (certCount ?? 0) - (actualCount as number) : null
+
               const spWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
 
               return (
@@ -382,8 +387,10 @@ export default function Medical() {
                     ) : <span className="text-gray-300">-</span>}
                   </span>
 
+                  {/* 🔹 คอลัมน์ผลต่าง (แก้ไขแล้ว) */}
                   <span>
                     {diff === null ? (
+                      // ยังไม่ได้บันทึกจำนวนตรวจจริง -> ไม่ฟันธงว่าครบหรือขาด
                       <span className="text-xs text-gray-300">-</span>
                     ) : diff === 0 ? (
                       <span className="text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md font-medium">ครบ</span>
