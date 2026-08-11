@@ -138,19 +138,22 @@ export default function Payments() {
     return (b.meal_price || 0) * (b.meal_count || 0)
   }
 
-  const getNormalTotalWithVat = (p: any) => {
+  // 🔹 ฐานภาษี VAT = ยอดตรวจปกติ + ยอดตรวจพิเศษ รวมกันก่อน แล้วค่อยคิด VAT 7% ครั้งเดียว
+  // (ค่าข้าวไฟล์ทบินไม่เข้าฐาน VAT เลย — บวกเข้าไปหลังคิด VAT แล้ว)
+  const getNormalTotalWithVat = (p: any, specialTotal: number = 0) => {
     const workerTotal = (p?.worker_count || 0) * (p?.price_per_worker || 0)
-    if (!p?.use_vat) return workerTotal
-    if (p.vat_mode === 'inclusive') return workerTotal
-    return Math.round(workerTotal * 1.07 * 100) / 100
+    const combinedBase = workerTotal + specialTotal
+    if (!p?.use_vat) return combinedBase
+    if (p.vat_mode === 'inclusive') return combinedBase
+    return Math.round(combinedBase * 1.07 * 100) / 100
   }
 
   const getGrandTotal = (b: any) => {
     const p = getP(b)
-    const normalWithVat = getNormalTotalWithVat(p)
     const specialTotal = getSpecialTotal(b)
+    const normalWithVat = getNormalTotalWithVat(p, specialTotal)
     const mealTotal = getMealTotal(b)
-    return Math.round((normalWithVat + specialTotal + mealTotal) * 100) / 100
+    return Math.round((normalWithVat + mealTotal) * 100) / 100
   }
 
   const fetchSlips = async (paymentId: string) => {
@@ -190,16 +193,18 @@ export default function Payments() {
   const normalTotal = form.worker_count * form.price_per_worker
   const specialAmountSelected = selected ? getSpecialTotal(selected) : 0
   const mealAmountSelected = selected ? getMealTotal(selected) : 0
+  // 🔹 ฐานภาษี VAT/WHT = ยอดตรวจปกติ + ยอดตรวจพิเศษ รวมกันก่อน (ค่าข้าวไม่เข้าฐานภาษีเลย)
+  const combinedBase = normalTotal + specialAmountSelected
   const vatBase = form.use_vat
-    ? (form.vat_mode === 'inclusive' ? normalTotal / 1.07 : normalTotal)
-    : normalTotal
+    ? (form.vat_mode === 'inclusive' ? combinedBase / 1.07 : combinedBase)
+    : combinedBase
   const vatAmount = form.use_vat
-    ? (form.vat_mode === 'inclusive' ? normalTotal - vatBase : normalTotal * 0.07)
+    ? (form.vat_mode === 'inclusive' ? combinedBase - vatBase : combinedBase * 0.07)
     : 0
-  const normalTotalWithVat = form.use_vat
-    ? (form.vat_mode === 'inclusive' ? normalTotal : normalTotal + vatAmount)
-    : normalTotal
-  const grandTotalSelected = normalTotalWithVat + specialAmountSelected + mealAmountSelected
+  const combinedTotalWithVat = form.use_vat
+    ? (form.vat_mode === 'inclusive' ? combinedBase : combinedBase + vatAmount)
+    : combinedBase
+  const grandTotalSelected = combinedTotalWithVat + mealAmountSelected
 
   const whtAmount = form.use_wht ? Math.round(vatBase * 0.03 * 100) / 100 : 0
 
@@ -682,7 +687,7 @@ export default function Payments() {
                     </span>
                   )}
                   {specialAmt === 0 && mealAmt === 0 && <span className="text-xs text-gray-300">-</span>}
-                  {p?.use_vat && <span className="text-xs text-sky-500 mt-0.5 block">รวม VAT</span>}
+                  {p?.use_vat && <span className="text-xs text-sky-500 mt-0.5 block">รวม VAT (ปกติ+พิเศษ)</span>}
                   {p?.use_wht && <span className="text-xs text-rose-500 mt-0.5 block">หัก ณ ที่จ่าย 3%</span>}
                   {grandTotal > 0 && <p className="text-xs font-bold text-gray-800 mt-0.5">รวม ฿{grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>}
                 </div>
@@ -788,7 +793,7 @@ export default function Payments() {
                     <input type="checkbox" checked={form.use_vat}
                       onChange={(e) => setForm({...form, use_vat: e.target.checked})}
                       className="rounded border-gray-300"/>
-                    <span className="text-xs font-medium text-gray-700">คิด VAT 7% (เฉพาะยอดตรวจปกติ)</span>
+                    <span className="text-xs font-medium text-gray-700">คิด VAT 7% (ยอดตรวจปกติ + ตรวจพิเศษ รวมกันก่อน — ไม่รวมค่าข้าว)</span>
                   </label>
                   {form.use_vat && (
                     <div className="flex gap-3 pl-6 mb-2">
@@ -810,24 +815,28 @@ export default function Payments() {
                     <input type="checkbox" checked={form.use_wht}
                       onChange={(e) => setForm({...form, use_wht: e.target.checked})}
                       className="rounded border-gray-300"/>
-                    <span className="text-xs font-medium text-gray-700">หัก ณ ที่จ่าย 3% (คิดจากยอดตรวจก่อน VAT เท่านั้น)</span>
+                    <span className="text-xs font-medium text-gray-700">หัก ณ ที่จ่าย 3% (คิดจากยอดตรวจปกติ+พิเศษ รวมกัน ก่อน VAT)</span>
                   </label>
                 </div>
                 <div className="space-y-1.5 bg-white rounded-lg p-3 border border-blue-200">
                   <div className="flex justify-between text-xs text-gray-500">
-                    <span>ยอดตรวจสุขภาพปกติ {form.use_vat && form.vat_mode === 'inclusive' ? '(ก่อน VAT)' : ''}</span>
-                    <span className="font-medium text-gray-700">฿{vatBase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span>ยอดตรวจสุขภาพปกติ</span>
+                    <span className="font-medium text-gray-700">฿{normalTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                  {specialAmountSelected > 0 && (
+                    <div className="flex justify-between text-xs text-purple-600">
+                      <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ ({getSpecialWorkers(selected)} คน)</span>
+                      <span className="font-medium">฿{specialAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs text-gray-600 border-t border-gray-100 pt-1">
+                    <span>รวมฐานภาษี (ปกติ+พิเศษ) {form.use_vat && form.vat_mode === 'inclusive' ? '(ก่อน VAT)' : ''}</span>
+                    <span className="font-medium">฿{vatBase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   {form.use_vat && (
                     <div className="flex justify-between text-xs text-sky-600">
                       <span>VAT 7%</span>
                       <span className="font-medium">฿{vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                    </div>
-                  )}
-                  {specialAmountSelected > 0 && (
-                    <div className="flex justify-between text-xs text-purple-600">
-                      <span className="flex items-center gap-1"><IconMicroscope size={10}/>ยอดตรวจพิเศษ ({getSpecialWorkers(selected)} คน)</span>
-                      <span className="font-medium">฿{specialAmountSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                   )}
                   {mealAmountSelected > 0 && (
