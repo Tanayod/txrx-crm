@@ -46,6 +46,7 @@ export default function Payments() {
   const [splitSaving, setSplitSaving] = useState(false)
 
   const [slips, setSlips] = useState<any[]>([])
+  const [amountReceivedText, setAmountReceivedText] = useState('')
 
   const getDefaultFrom = () => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) }
   const [search, setSearch] = useState('')
@@ -184,6 +185,7 @@ export default function Payments() {
       credit_toggle: (p?.credit_used || 0) > 0,
       keep_excess_credit: true,
     })
+    setAmountReceivedText(p?.id ? String(p?.amount_received ?? 0) : '')
     if (p?.id) fetchSlips(p.id)
     else setSlips([])
     fetchReceiptsForBooking(booking.id)
@@ -872,12 +874,22 @@ export default function Payments() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ยอดรับชำระจริง (บาท)</label>
                 <div className="flex gap-2">
-                  <input type="text" inputMode="numeric"
-                    value={form.amountTouched ? (form.amount_received === 0 ? '0' : form.amount_received || '') : ''}
-                    onChange={(e) => setForm({...form, amount_received: Number(e.target.value.replace(/\D/g,'')), amountTouched: true})}
+                  <input type="text" inputMode="decimal"
+                    value={form.amountTouched ? amountReceivedText : ''}
+                    onChange={(e) => {
+                      // อนุญาตเฉพาะตัวเลขกับจุดทศนิยม และให้มีจุดได้แค่จุดเดียว
+                      let v = e.target.value.replace(/[^\d.]/g, '')
+                      const firstDot = v.indexOf('.')
+                      if (firstDot !== -1) {
+                        v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '')
+                      }
+                      setAmountReceivedText(v)
+                      const num = v === '' || v === '.' ? 0 : Number(v)
+                      setForm({...form, amount_received: isNaN(num) ? 0 : num, amountTouched: true})
+                    }}
                     placeholder={`${netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เท่ากับยอดที่ต้องชำระ)`}
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
-                  <button type="button" onClick={() => setForm({...form, amount_received: 0, amountTouched: true})}
+                  <button type="button" onClick={() => { setAmountReceivedText('0'); setForm({...form, amount_received: 0, amountTouched: true}) }}
                     className="px-3 py-2.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 whitespace-nowrap">
                     ยังไม่จ่าย (0)
                   </button>
