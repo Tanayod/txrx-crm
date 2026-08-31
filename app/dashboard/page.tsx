@@ -2,11 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight, IconInfoCircle, IconMicroscope, IconCalendarStats, IconActivityHeartbeat, IconDeviceSim } from '@tabler/icons-react'
+import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight, IconInfoCircle, IconMicroscope, IconCalendarStats, IconActivityHeartbeat, IconDeviceSim, IconGripVertical, IconEye, IconEyeOff, IconLayoutGrid } from '@tabler/icons-react'
 
 const DAYS_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 const MONTHS_TH_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
@@ -34,6 +34,34 @@ const P = {
   emerald: '#059669',
 }
 const SERIES = [P.indigo, P.violet, P.teal, P.amber, '#64748B', '#0EA5E9']
+
+// ── Widget layout ──
+const LAYOUT_KEY = 'txrx_dash_layout_v1'
+const DEFAULT_ORDER = ['pillars','kpi','trend','services','topCustomers','aging','inactive','debt','sim','special']
+const WIDGET_TITLES: Record<string, string> = {
+  pillars: '4 เสาหลัก',
+  kpi: 'ตัวชี้วัดรอง',
+  trend: 'แนวโน้มรายเดือน',
+  services: 'แยกตามประเภทงาน',
+  topCustomers: 'ลูกค้าที่ใช้บริการเยอะสุด',
+  aging: 'ใบแพทย์ค้างส่ง',
+  inactive: 'ลูกค้าที่หายไปนาน',
+  debt: 'ยอดหนี้ค้างชำระ',
+  sim: 'ยอดขายซิมตามแพ็กเกจ',
+  special: 'ยอดตรวจพิเศษ',
+}
+const WIDGET_SPAN: Record<string, string> = {
+  pillars: 'lg:col-span-6',
+  kpi: 'lg:col-span-6',
+  trend: 'lg:col-span-3',
+  services: 'lg:col-span-3',
+  topCustomers: 'lg:col-span-2',
+  aging: 'lg:col-span-2',
+  inactive: 'lg:col-span-2',
+  debt: 'lg:col-span-6',
+  sim: 'lg:col-span-3',
+  special: 'lg:col-span-3',
+}
 
 const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
@@ -78,6 +106,50 @@ export default function Dashboard() {
   const [specialExamTotal, setSpecialExamTotal] = useState(0)
   const [specialExamTotalCount, setSpecialExamTotalCount] = useState(0)
   const [monthlyTrend, setMonthlyTrend] = useState<any[]>([])
+
+  // ── layout state ──
+  const [order, setOrder] = useState<string[]>(DEFAULT_ORDER)
+  const [hidden, setHidden] = useState<string[]>([])
+  const [editMode, setEditMode] = useState(false)
+  const dragId = useRef<string | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user?.id) return
+    try {
+      const raw = localStorage.getItem(`${LAYOUT_KEY}_${user.id}`)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (Array.isArray(saved.order)) {
+          const kept = saved.order.filter((id: string) => DEFAULT_ORDER.includes(id))
+          const merged = [...kept, ...DEFAULT_ORDER.filter(id => !kept.includes(id))]
+          setOrder(merged)
+        }
+        if (Array.isArray(saved.hidden)) setHidden(saved.hidden.filter((id: string) => DEFAULT_ORDER.includes(id)))
+      }
+    } catch {}
+  }, [user?.id])
+
+  const persistLayout = (nextOrder: string[], nextHidden: string[]) => {
+    setOrder(nextOrder)
+    setHidden(nextHidden)
+    try {
+      if (user?.id) localStorage.setItem(`${LAYOUT_KEY}_${user.id}`, JSON.stringify({ order: nextOrder, hidden: nextHidden }))
+    } catch {}
+  }
+  const handleDrop = (targetId: string) => {
+    const src = dragId.current
+    dragId.current = null
+    setDragOver(null)
+    if (!src || src === targetId) return
+    const next = order.filter(x => x !== src)
+    const idx = next.indexOf(targetId)
+    next.splice(idx < 0 ? next.length : idx, 0, src)
+    persistLayout(next, hidden)
+  }
+  const hideWidget = (id: string) => persistLayout(order, [...hidden, id])
+  const showWidget = (id: string) => persistLayout(order, hidden.filter(x => x !== id))
+  const resetLayout = () => persistLayout(DEFAULT_ORDER, [])
 
   const now = new Date()
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`)
@@ -508,8 +580,6 @@ export default function Dashboard() {
 
   if (!ready) return <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: P.bg, color: P.faint }}>กำลังโหลด...</div>
 
-  const inputCls = 'border border-[#E2E5EF] bg-white rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400'
-
   const pillars = [
     { key: 'booked', label: 'ยอดจองรวม', en: 'Booked', icon: IconCalendarStats, color: P.navy2,
       value: kpi.rangeBooked, unit: 'คน', note: 'แผนจองในช่วงที่เลือก', bar: 100, badge: null as string | null },
@@ -527,6 +597,351 @@ export default function Dashboard() {
     { label: 'สัปดาห์นี้', value: kpi.wtd, cur: kpi.wtdAvg, prev: kpi.wtdPrevAvg, sub: `เฉลี่ย ${loading ? '—' : kpi.wtdAvg.toFixed(1)}/วัน` },
     { label: 'เดือนนี้', value: kpi.mtd, cur: kpi.mtdAvg, prev: kpi.mtdPrevAvg, sub: `เฉลี่ย ${loading ? '—' : kpi.mtdAvg.toFixed(1)}/วัน` },
   ]
+
+  // ── widget content ──
+  const WIDGETS: Record<string, React.ReactNode> = {
+    pillars: (
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {pillars.map((p) => (
+          <div key={p.key} className={`${CARD} p-4 relative overflow-hidden`}>
+            <span className="absolute left-0 top-0 h-full w-1" style={{ background: p.color }} />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${p.color}14`, color: p.color }}>
+                  <p.icon size={17}/>
+                </span>
+                <div className="leading-tight">
+                  <p className="text-[12px] font-semibold" style={{ color: P.body }}>{p.label}</p>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: P.faint }}>{p.en}</p>
+                </div>
+              </div>
+              {p.badge && (
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums" style={{ background: `${p.color}14`, color: p.color }}>
+                  {loading ? '—' : p.badge}
+                </span>
+              )}
+            </div>
+            <p className="text-[30px] leading-none font-bold mt-3 tabular-nums" style={{ color: P.ink }}>
+              {loading ? '—' : p.value.toLocaleString()}
+              <span className="text-xs font-medium ml-1.5" style={{ color: P.faint }}>{p.unit}</span>
+            </p>
+            <Bar pct={loading ? 0 : p.bar} color={p.color} className="mt-3" />
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : p.note}</p>
+              {p.trend && <TrendPill cur={p.trend.cur} prev={p.trend.prev} />}
+            </div>
+          </div>
+        ))}
+      </div>
+    ),
+
+    kpi: (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={`${CARD} p-4`}>
+          <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>อัตรามาตรวจจริง</p>
+          <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : `${kpi.utilization}%`}</p>
+          <Bar pct={kpi.utilization} color={P.indigo} className="mt-2.5" />
+          <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>ตรวจจริง ÷ จองไว้</p>
+        </div>
+        <div className={`${CARD} p-4 cursor-pointer hover:border-indigo-200 transition-colors`} onClick={() => window.location.href='/payments'}>
+          <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>รับเงินช่วงนี้</p>
+          <p className="text-[22px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.teal }}>฿{loading ? '—' : kpi.revenue.toLocaleString()}</p>
+          <div className="mt-2"><TrendPill cur={kpi.revenue} prev={kpi.prevRevenue} label="เทียบช่วงก่อน" /></div>
+        </div>
+        <div className={`${CARD} p-4`}>
+          <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>ลูกค้าที่ใช้บริการ</p>
+          <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : kpi.activeCustomers.toLocaleString()}</p>
+          <p className="text-[11px] mt-2" style={{ color: P.faint }}>
+            {kpi.totalCustomers > 0 ? `${fmtPct((kpi.activeCustomers / kpi.totalCustomers) * 100)} ` : ''}จากทั้งหมด {kpi.totalCustomers.toLocaleString()} ราย
+          </p>
+        </div>
+        <div className={`${CARD} p-4`}>
+          <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>ลูกค้ากลับมาซ้ำ</p>
+          <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : `${kpi.repeatRate}%`}</p>
+          <Bar pct={kpi.repeatRate} color={P.violet} className="mt-2.5" />
+          <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>ของลูกค้าที่ใช้บริการช่วงนี้</p>
+        </div>
+      </div>
+    ),
+
+    trend: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.indigo} title="แนวโน้มรายเดือน" sub="จำนวนคนตรวจ + รายได้ ย้อนหลัง 6 เดือน (ไม่ขึ้นกับตัวกรอง)" />
+        <div className="flex items-end gap-2.5 h-44">
+          {monthlyTrend.map((m, i) => {
+            const maxCount = Math.max(...monthlyTrend.map(x => x.count), 1)
+            const isCurrent = i === monthlyTrend.length - 1
+            const barPct = Math.round((m.count/maxCount)*100)
+            return (
+              <div key={m.key} className="flex-1 flex flex-col items-center gap-1.5">
+                <span className="text-[11px] font-bold tabular-nums" style={{ color: isCurrent ? P.indigo : P.muted }}>{m.count > 0 ? m.count.toLocaleString() : ''}</span>
+                <div className="w-full flex items-end" style={{ height: '104px' }}>
+                  <div className="w-full rounded-md transition-all duration-500" style={{
+                    height: `${barPct}%`, minHeight: m.count > 0 ? '6px' : '2px',
+                    background: isCurrent ? `linear-gradient(180deg, ${P.violet}, ${P.indigo})` : '#DDDEF2'
+                  }}/>
+                </div>
+                <span className="text-[11px]" style={{ color: isCurrent ? P.ink : P.faint, fontWeight: isCurrent ? 700 : 500 }}>{m.label}</span>
+                <span className="text-[10px] font-semibold tabular-nums" style={{ color: P.teal }}>฿{m.revenue >= 1000 ? `${Math.round(m.revenue/1000)}k` : m.revenue}</span>
+              </div>
+            )
+          })}
+          {monthlyTrend.length === 0 && !loading && <p className="text-sm w-full text-center" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
+        </div>
+      </div>
+    ),
+
+    services: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.violet} title="แยกตามประเภทงาน" sub="แถบ = สัดส่วนของยอดตรวจจริงทั้งหมด · ตัวเลขขวา = เทียบช่วงก่อน" />
+        <div className="space-y-3.5">
+          {serviceBreakdown.length === 0 && !loading && <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
+          {serviceBreakdown.map((s, i) => {
+            const prev = prevServiceBreakdown.find(p => p.name === s.name)?.count || 0
+            const share = kpi.rangeTotal > 0 ? (s.count / kpi.rangeTotal) * 100 : 0
+            const color = svcColor(s.name, i)
+            return (
+              <div key={s.name}>
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[13px]" style={{ color: P.body }}>{s.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.track, color: P.muted }}>{fmtPct(share)}</span>
+                    <span className="text-[13px] font-bold tabular-nums" style={{ color: P.ink }}>{s.count.toLocaleString()}</span>
+                    <TrendPill cur={s.count} prev={prev} />
+                  </div>
+                </div>
+                <Bar pct={share} color={color} />
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-4 pt-3.5 border-t grid grid-cols-2 gap-2.5" style={{ borderColor: P.line }}>
+          <div className="rounded-lg p-3 cursor-pointer bg-rose-50 border border-rose-100 hover:bg-rose-100/60 transition-colors" onClick={() => window.location.href='/payments'}>
+            <p className="text-[11px] font-semibold text-rose-600">รอเก็บเงิน</p>
+            <p className="text-xl font-bold text-rose-600 tabular-nums mt-0.5">{kpi.pendingPayments}</p>
+            <p className="text-[10px] text-rose-500/80">รายการ (ยังไม่ชำระ/ค้างชำระ)</p>
+          </div>
+          <div className="rounded-lg p-3 cursor-pointer bg-amber-50 border border-amber-100 hover:bg-amber-100/60 transition-colors" onClick={() => window.location.href='/medical'}>
+            <p className="text-[11px] font-semibold text-amber-700">รอส่งใบแพทย์</p>
+            <p className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">{kpi.allPendingCerts.toLocaleString()}</p>
+            <p className="text-[10px] text-amber-600/80">ใบ{kpi.overdueCerts > 0 ? ` · เกินกำหนด ${kpi.overdueCerts.toLocaleString()}` : ''}</p>
+          </div>
+        </div>
+      </div>
+    ),
+
+    topCustomers: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.indigo} title="ลูกค้าที่ใช้บริการเยอะสุด" sub="% = สัดส่วนของยอดตรวจจริงทั้งหมด"
+          right={<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: P.track, color: P.muted }}>{topCustomers.length} ราย</span>} />
+        <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+          {topCustomers.length === 0 && !loading && <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
+          {topCustomers.map((c, i) => {
+            const share = kpi.rangeTotal > 0 ? (c.count / kpi.rangeTotal) * 100 : 0
+            return (
+              <div key={c.name} className="flex items-center gap-2.5">
+                <span className="text-[11px] w-4 text-right font-mono" style={{ color: P.faint }}>{i+1}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[12px] truncate" style={{ color: P.body }}>{c.name}</span>
+                    <span className="text-[11px] ml-2 flex-shrink-0 tabular-nums" style={{ color: P.muted }}>
+                      <span className="font-bold" style={{ color: P.ink }}>{c.count.toLocaleString()}</span> · {fmtPct(share)}
+                    </span>
+                  </div>
+                  <Bar pct={Math.round((c.count/maxCust)*100)} color={P.indigo} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    ),
+
+    aging: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.rose} title="ใบแพทย์ค้างส่ง"
+          sub="แดง = เกินกำหนด (ปกติ 3 วัน / ตรวจพิเศษ 14 วัน) · เหลือง = ยังไม่เกินแต่ส่งไม่ครบ"
+          right={
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[11px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">เกิน {kpi.overdueCerts.toLocaleString()}</span>
+              <span className="text-[11px] bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded-full tabular-nums">รวม {kpi.allPendingCerts.toLocaleString()}</span>
+            </div>
+          } />
+        <div className="space-y-2">
+          {agingCerts.length === 0 && !loading && (
+            <div className="text-center py-8">
+              <p className="text-2xl mb-1">✅</p>
+              <p className="text-sm text-emerald-600 font-semibold">ไม่มีใบแพทย์ค้างส่ง</p>
+              <p className="text-xs text-emerald-500 mt-1">ทุกเคสส่งครบแล้ว</p>
+            </div>
+          )}
+          {agingCerts.map((c, i) => (
+            <div key={i} className={`flex items-center justify-between p-2.5 rounded-lg border ${c.isOverdue ? 'bg-rose-50 border-rose-100' : 'bg-amber-50 border-amber-100'}`}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1">
+                  <p className="text-[12px] font-semibold truncate" style={{ color: P.body }}>{c.customer_name}</p>
+                  {c.hasSpecialExam && <span className="text-[9px] font-semibold px-1 rounded flex-shrink-0 bg-violet-100 text-violet-700">ตรวจพิเศษ</span>}
+                  {!c.isOverdue && <span className="text-[9px] font-semibold px-1 rounded flex-shrink-0 bg-slate-100 text-slate-500">ยังไม่เกิน</span>}
+                </div>
+                <p className="text-[11px]" style={{ color: P.faint }}>{c.case_number} · {c.booking_date}</p>
+              </div>
+              <div className="text-right flex-shrink-0 ml-2">
+                <p className={`text-[12px] font-bold tabular-nums ${c.isOverdue ? 'text-rose-600' : 'text-amber-700'}`}>ค้าง {c.pending}</p>
+                <span className={`text-[10px] flex items-center gap-0.5 justify-end ${c.isOverdue ? 'text-rose-400' : 'text-amber-500'}`}>
+                  <IconAlertTriangle size={9}/> {c.daysOver} วัน
+                </span>
+              </div>
+            </div>
+          ))}
+          {agingCerts.length > 0 && (
+            <button onClick={() => window.location.href='/medical'} className="w-full text-[11px] flex items-center justify-center gap-1 pt-1.5 text-slate-400 hover:text-indigo-600 transition-colors">
+              ดูทั้งหมด <IconChevronRight size={12}/>
+            </button>
+          )}
+        </div>
+      </div>
+    ),
+
+    inactive: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.amber} title="ลูกค้าที่หายไปนาน" sub="ไม่มาใช้บริการเกิน 90 วัน" />
+        <div className="mb-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: P.indigo }}>ไฟล์ทบิน / MOU</p>
+          <div className="space-y-1.5">
+            {inactiveCustomers.mou.length === 0 && <p className="text-xs" style={{ color: P.faint }}>ไม่มี</p>}
+            {inactiveCustomers.mou.map(c => (
+              <div key={c.name} className="flex items-center justify-between py-1 border-b" style={{ borderColor: P.line }}>
+                <span className="text-[12px] truncate flex-1" style={{ color: P.body }}>{c.name}</span>
+                <span className="text-[11px] ml-2 flex-shrink-0 tabular-nums" style={{ color: P.faint }}>{c.daysAgo} วัน</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border-t pt-3" style={{ borderColor: P.line }}>
+          <p className="text-[11px] font-bold uppercase tracking-wider mb-2 text-amber-700">กลุ่มอื่นๆ (ควรติดต่อ)</p>
+          <div className="space-y-1.5">
+            {inactiveCustomers.renew.length === 0 && <p className="text-xs" style={{ color: P.faint }}>ไม่มี</p>}
+            {inactiveCustomers.renew.map(c => (
+              <div key={c.name} className="flex items-center justify-between py-1 border-b" style={{ borderColor: P.line }}>
+                <span className="text-[12px] truncate flex-1" style={{ color: P.body }}>{c.name}</span>
+                <span className="text-[11px] ml-2 flex-shrink-0 tabular-nums" style={{ color: P.faint }}>{c.daysAgo} วัน</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    ),
+
+    debt: (
+      <div className={`${CARD} p-5`}>
+        <SectionHead dot={P.rose} title="ยอดหนี้ค้างชำระทั้งหมด" sub="รวมยอดยกมาก่อนใช้ระบบ · % = สัดส่วนของหนี้ทั้งหมด"
+          right={<span className="text-lg font-bold text-rose-600 tabular-nums">฿{loading ? '—' : totalDebt.toLocaleString()}</span>} />
+        {debtByService.length === 0 && !loading ? (
+          <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มียอดค้างชำระ</p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {debtByService.map((d, i) => {
+              const isOpening = d.name === 'ยอดยกมา (ก่อนใช้ระบบ)'
+              const color = isOpening ? P.amber : svcColor(d.name, i)
+              const share = totalDebt > 0 ? (d.amount / totalDebt) * 100 : 0
+              return (
+                <div key={d.name} className="rounded-lg p-3 cursor-pointer border hover:shadow-sm transition-shadow" style={{ borderColor: P.line, background: '#FCFCFE' }} onClick={() => window.location.href='/customers'}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }}/>
+                    <p className="text-[11px] truncate" style={{ color: P.muted }}>{d.name}</p>
+                  </div>
+                  <p className="text-[15px] font-bold tabular-nums" style={{ color: P.ink }}>฿{d.amount.toLocaleString()}</p>
+                  <Bar pct={share} color={color} className="mt-1.5" />
+                  <p className="text-[10px] mt-1 tabular-nums" style={{ color: P.faint }}>{fmtPct(share)} ของหนี้ทั้งหมด</p>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    ),
+
+    sim: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.teal} title="ยอดขายซิมตามแพ็กเกจ" sub="% = สัดส่วนของซิมทั้งหมดในช่วงที่กรอง"
+          right={
+            <div className="text-right">
+              <span className="text-[13px] font-bold block tabular-nums" style={{ color: P.teal }}>{loading ? '—' : simTotalCount.toLocaleString()} ซิม</span>
+              <span className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : fmtPct(simPct)} ของยอดตรวจจริง</span>
+            </div>
+          } />
+        {simSummary.length === 0 && !loading ? (
+          <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูลในช่วงนี้</p>
+        ) : (
+          <div className="space-y-2">
+            {simSummary.map((s, i) => {
+              const isLegacy = s.package === 'ไม่ระบุแพ็คเกจ (ข้อมูลเก่า)'
+              const share = simTotalCount > 0 ? (s.count / simTotalCount) * 100 : 0
+              return (
+                <div key={i} className="rounded-lg px-3 py-2.5 border" style={{ borderColor: P.line, background: isLegacy ? '#F8FAFC' : '#FCFCFE' }}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-[13px] font-semibold" style={{ color: isLegacy ? P.faint : P.body }}>
+                        {isLegacy ? s.package : `฿${s.package}/เดือน`}
+                      </span>
+                      <span className="text-[11px] ml-2" style={{ color: P.faint }}>{s.type}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.track, color: P.muted }}>{fmtPct(share)}</span>
+                      <span className="text-[13px] font-bold tabular-nums" style={{ color: isLegacy ? P.faint : P.teal }}>{s.count} ซิม</span>
+                    </div>
+                  </div>
+                  <Bar pct={share} color={isLegacy ? '#CBD5E1' : P.teal} className="mt-2" />
+                </div>
+              )
+            })}
+            <div className="flex justify-between items-center pt-2.5 border-t" style={{ borderColor: P.line }}>
+              <span className="text-[12px] font-semibold" style={{ color: P.muted }}>รวมทั้งหมด</span>
+              <span className="text-[13px] font-bold tabular-nums" style={{ color: P.ink }}>{simTotalCount} ซิม</span>
+            </div>
+          </div>
+        )}
+      </div>
+    ),
+
+    special: (
+      <div className={`${CARD} p-5 h-full`}>
+        <SectionHead dot={P.violet} title="ยอดตรวจพิเศษ" sub={`เฉลี่ย ฿${loading ? '—' : Math.round(specialAvgPerHead).toLocaleString()}/คน · % = สัดส่วนของยอดเงินตรวจพิเศษ`}
+          right={
+            <div className="text-right">
+              <span className="text-[13px] font-bold block tabular-nums" style={{ color: P.violet }}>฿{loading ? '—' : specialExamTotal.toLocaleString()}</span>
+              <span className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : specialExamTotalCount.toLocaleString()} คน · {loading ? '—' : fmtPct(specialPct)} ของตรวจจริง</span>
+            </div>
+          } />
+        {specialExamSummary.length === 0 && !loading ? (
+          <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูลในช่วงนี้</p>
+        ) : (
+          <div className="space-y-2">
+            {specialExamSummary.map((s, i) => {
+              const share = specialExamTotal > 0 ? (s.amount / specialExamTotal) * 100 : 0
+              return (
+                <div key={i} className="rounded-lg px-3 py-2.5 border" style={{ borderColor: P.line, background: '#FCFCFE' }}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-[13px] font-semibold" style={{ color: P.body }}>{s.name}</span>
+                      <span className="text-[11px] ml-2 tabular-nums" style={{ color: P.faint }}>×{s.count}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.violetSoft, color: P.violet }}>{fmtPct(share)}</span>
+                      <span className="text-[13px] font-bold tabular-nums" style={{ color: P.violet }}>฿{s.amount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <Bar pct={share} color={P.violet} className="mt-2" />
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    ),
+  }
+
+  const visibleOrder = order.filter(id => !hidden.includes(id))
 
   return (
     <div className="flex min-h-screen" style={{ background: P.bg }}>
@@ -579,7 +994,7 @@ export default function Dashboard() {
         </div>
 
         {/* note */}
-        <div className="rounded-lg px-3.5 py-2.5 mb-4 flex items-start gap-2 bg-indigo-50/60 border border-indigo-100">
+        <div className="rounded-lg px-3.5 py-2.5 mb-3 flex items-start gap-2 bg-indigo-50/60 border border-indigo-100">
           <IconInfoCircle size={15} className="text-indigo-500 flex-shrink-0 mt-0.5"/>
           <p className="text-xs text-indigo-900/80 leading-relaxed">
             ค่า &quot;เทียบกับ&quot; ทั้งหมด = เทียบช่วงเวลาเดียวกันก่อนหน้า (วันนี้↔เมื่อวาน · สัปดาห์นี้↔สัปดาห์ก่อน · เดือนนี้↔เดือนก่อน).
@@ -587,336 +1002,69 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* ── 4 เสาหลัก ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-          {pillars.map((p) => (
-            <div key={p.key} className={`${CARD} p-4 relative overflow-hidden`}>
-              <span className="absolute left-0 top-0 h-full w-1" style={{ background: p.color }} />
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${p.color}14`, color: p.color }}>
-                    <p.icon size={17}/>
+        {/* ── layout toolbar ── */}
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p className="text-[11px]" style={{ color: P.faint }}>
+            {editMode ? 'ลากการ์ดเพื่อสลับตำแหน่ง · กดไอคอนตาเพื่อซ่อน · จำเฉพาะเครื่องนี้ (ใช้บนคอม)' : ''}
+          </p>
+          <div className="flex items-center gap-2">
+            {editMode && (
+              <button onClick={resetLayout}
+                className="text-[12px] font-medium px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors flex items-center gap-1.5">
+                <IconRefresh size={13}/> รีเซ็ต
+              </button>
+            )}
+            <button onClick={() => setEditMode(v => !v)}
+              className={`text-[12px] font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                editMode ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200'
+              }`}>
+              <IconLayoutGrid size={14}/> {editMode ? 'เสร็จสิ้น' : 'จัดเลย์เอาต์'}
+            </button>
+          </div>
+        </div>
+
+        {/* hidden widgets bar */}
+        {editMode && hidden.length > 0 && (
+          <div className="mb-3 rounded-lg border border-dashed border-slate-300 bg-white p-2.5 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-medium" style={{ color: P.faint }}>ซ่อนอยู่:</span>
+            {hidden.map(id => (
+              <button key={id} onClick={() => showWidget(id)}
+                className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 transition-colors">
+                <IconEye size={12}/> {WIDGET_TITLES[id]}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── widget grid ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 items-start">
+          {visibleOrder.map(id => (
+            <section
+              key={id}
+              className={`${WIDGET_SPAN[id]} ${editMode ? 'rounded-xl ring-1 transition-shadow' : ''} ${
+                editMode && dragOver === id ? 'ring-2 ring-indigo-500 shadow-lg' : editMode ? 'ring-indigo-200' : ''
+              }`}
+              draggable={editMode}
+              onDragStart={() => { dragId.current = id }}
+              onDragEnd={() => { dragId.current = null; setDragOver(null) }}
+              onDragOver={e => { if (editMode) { e.preventDefault(); if (dragOver !== id) setDragOver(id) } }}
+              onDrop={() => editMode && handleDrop(id)}
+            >
+              {editMode && (
+                <div className="flex items-center justify-between px-1 pb-1.5 cursor-grab active:cursor-grabbing">
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600">
+                    <IconGripVertical size={14}/> {WIDGET_TITLES[id]}
                   </span>
-                  <div className="leading-tight">
-                    <p className="text-[12px] font-semibold" style={{ color: P.body }}>{p.label}</p>
-                    <p className="text-[10px] uppercase tracking-wider" style={{ color: P.faint }}>{p.en}</p>
-                  </div>
+                  <button onClick={() => hideWidget(id)} className="text-slate-400 hover:text-rose-500 transition-colors" title="ซ่อนการ์ดนี้">
+                    <IconEyeOff size={14}/>
+                  </button>
                 </div>
-                {p.badge && (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums" style={{ background: `${p.color}14`, color: p.color }}>
-                    {loading ? '—' : p.badge}
-                  </span>
-                )}
+              )}
+              <div className={editMode ? 'pointer-events-none select-none' : ''}>
+                {WIDGETS[id]}
               </div>
-              <p className="text-[30px] leading-none font-bold mt-3 tabular-nums" style={{ color: P.ink }}>
-                {loading ? '—' : p.value.toLocaleString()}
-                <span className="text-xs font-medium ml-1.5" style={{ color: P.faint }}>{p.unit}</span>
-              </p>
-              <Bar pct={loading ? 0 : p.bar} color={p.color} className="mt-3" />
-              <div className="flex items-center justify-between mt-2">
-                <p className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : p.note}</p>
-                {p.trend && <TrendPill cur={p.trend.cur} prev={p.trend.prev} />}
-              </div>
-            </div>
+            </section>
           ))}
-        </div>
-
-        {/* ── KPI รอง ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <div className={`${CARD} p-4`}>
-            <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>อัตรามาตรวจจริง</p>
-            <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : `${kpi.utilization}%`}</p>
-            <Bar pct={kpi.utilization} color={P.indigo} className="mt-2.5" />
-            <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>ตรวจจริง ÷ จองไว้</p>
-          </div>
-          <div className={`${CARD} p-4 cursor-pointer hover:border-indigo-200 transition-colors`} onClick={() => window.location.href='/payments'}>
-            <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>รับเงินช่วงนี้</p>
-            <p className="text-[22px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.teal }}>฿{loading ? '—' : kpi.revenue.toLocaleString()}</p>
-            <div className="mt-2"><TrendPill cur={kpi.revenue} prev={kpi.prevRevenue} label="เทียบช่วงก่อน" /></div>
-          </div>
-          <div className={`${CARD} p-4`}>
-            <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>ลูกค้าที่ใช้บริการ</p>
-            <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : kpi.activeCustomers.toLocaleString()}</p>
-            <p className="text-[11px] mt-2" style={{ color: P.faint }}>
-              {kpi.totalCustomers > 0 ? `${fmtPct((kpi.activeCustomers / kpi.totalCustomers) * 100)} ` : ''}จากทั้งหมด {kpi.totalCustomers.toLocaleString()} ราย
-            </p>
-          </div>
-          <div className={`${CARD} p-4`}>
-            <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>ลูกค้ากลับมาซ้ำ</p>
-            <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : `${kpi.repeatRate}%`}</p>
-            <Bar pct={kpi.repeatRate} color={P.violet} className="mt-2.5" />
-            <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>ของลูกค้าที่ใช้บริการช่วงนี้</p>
-          </div>
-        </div>
-
-        {/* ── แนวโน้ม + ประเภทงาน ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.indigo} title="แนวโน้มรายเดือน" sub="จำนวนคนตรวจ + รายได้ ย้อนหลัง 6 เดือน (ไม่ขึ้นกับตัวกรอง)" />
-            <div className="flex items-end gap-2.5 h-44">
-              {monthlyTrend.map((m, i) => {
-                const maxCount = Math.max(...monthlyTrend.map(x => x.count), 1)
-                const isCurrent = i === monthlyTrend.length - 1
-                const barPct = Math.round((m.count/maxCount)*100)
-                return (
-                  <div key={m.key} className="flex-1 flex flex-col items-center gap-1.5">
-                    <span className="text-[11px] font-bold tabular-nums" style={{ color: isCurrent ? P.indigo : P.muted }}>{m.count > 0 ? m.count.toLocaleString() : ''}</span>
-                    <div className="w-full flex items-end" style={{ height: '104px' }}>
-                      <div className="w-full rounded-md transition-all duration-500" style={{
-                        height: `${barPct}%`, minHeight: m.count > 0 ? '6px' : '2px',
-                        background: isCurrent ? `linear-gradient(180deg, ${P.violet}, ${P.indigo})` : '#DDDEF2'
-                      }}/>
-                    </div>
-                    <span className="text-[11px]" style={{ color: isCurrent ? P.ink : P.faint, fontWeight: isCurrent ? 700 : 500 }}>{m.label}</span>
-                    <span className="text-[10px] font-semibold tabular-nums" style={{ color: P.teal }}>฿{m.revenue >= 1000 ? `${Math.round(m.revenue/1000)}k` : m.revenue}</span>
-                  </div>
-                )
-              })}
-              {monthlyTrend.length === 0 && !loading && <p className="text-sm w-full text-center" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
-            </div>
-          </div>
-
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.violet} title="แยกตามประเภทงาน" sub="แถบ = สัดส่วนของยอดตรวจจริงทั้งหมด · ตัวเลขขวา = เทียบช่วงก่อน" />
-            <div className="space-y-3.5">
-              {serviceBreakdown.length === 0 && !loading && <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
-              {serviceBreakdown.map((s, i) => {
-                const prev = prevServiceBreakdown.find(p => p.name === s.name)?.count || 0
-                const share = kpi.rangeTotal > 0 ? (s.count / kpi.rangeTotal) * 100 : 0
-                const color = svcColor(s.name, i)
-                return (
-                  <div key={s.name}>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-[13px]" style={{ color: P.body }}>{s.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.track, color: P.muted }}>{fmtPct(share)}</span>
-                        <span className="text-[13px] font-bold tabular-nums" style={{ color: P.ink }}>{s.count.toLocaleString()}</span>
-                        <TrendPill cur={s.count} prev={prev} />
-                      </div>
-                    </div>
-                    <Bar pct={share} color={color} />
-                  </div>
-                )
-              })}
-            </div>
-            <div className="mt-4 pt-3.5 border-t grid grid-cols-2 gap-2.5" style={{ borderColor: P.line }}>
-              <div className="rounded-lg p-3 cursor-pointer bg-rose-50 border border-rose-100 hover:bg-rose-100/60 transition-colors" onClick={() => window.location.href='/payments'}>
-                <p className="text-[11px] font-semibold text-rose-600">รอเก็บเงิน</p>
-                <p className="text-xl font-bold text-rose-600 tabular-nums mt-0.5">{kpi.pendingPayments}</p>
-                <p className="text-[10px] text-rose-500/80">รายการ (ยังไม่ชำระ/ค้างชำระ)</p>
-              </div>
-              <div className="rounded-lg p-3 cursor-pointer bg-amber-50 border border-amber-100 hover:bg-amber-100/60 transition-colors" onClick={() => window.location.href='/medical'}>
-                <p className="text-[11px] font-semibold text-amber-700">รอส่งใบแพทย์</p>
-                <p className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">{kpi.allPendingCerts.toLocaleString()}</p>
-                <p className="text-[10px] text-amber-600/80">ใบ{kpi.overdueCerts > 0 ? ` · เกินกำหนด ${kpi.overdueCerts.toLocaleString()}` : ''}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Top customers / Aging / Inactive ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.indigo} title="ลูกค้าที่ใช้บริการเยอะสุด" sub="% = สัดส่วนของยอดตรวจจริงทั้งหมด"
-              right={<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: P.track, color: P.muted }}>{topCustomers.length} ราย</span>} />
-            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-              {topCustomers.length === 0 && !loading && <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
-              {topCustomers.map((c, i) => {
-                const share = kpi.rangeTotal > 0 ? (c.count / kpi.rangeTotal) * 100 : 0
-                return (
-                  <div key={c.name} className="flex items-center gap-2.5">
-                    <span className="text-[11px] w-4 text-right font-mono" style={{ color: P.faint }}>{i+1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[12px] truncate" style={{ color: P.body }}>{c.name}</span>
-                        <span className="text-[11px] ml-2 flex-shrink-0 tabular-nums" style={{ color: P.muted }}>
-                          <span className="font-bold" style={{ color: P.ink }}>{c.count.toLocaleString()}</span> · {fmtPct(share)}
-                        </span>
-                      </div>
-                      <Bar pct={Math.round((c.count/maxCust)*100)} color={P.indigo} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.rose} title="ใบแพทย์ค้างส่ง"
-              sub="แดง = เกินกำหนด (ปกติ 3 วัน / ตรวจพิเศษ 14 วัน) · เหลือง = ยังไม่เกินแต่ส่งไม่ครบ"
-              right={
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-[11px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">เกิน {kpi.overdueCerts.toLocaleString()}</span>
-                  <span className="text-[11px] bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded-full tabular-nums">รวม {kpi.allPendingCerts.toLocaleString()}</span>
-                </div>
-              } />
-            <div className="space-y-2">
-              {agingCerts.length === 0 && !loading && (
-                <div className="text-center py-8">
-                  <p className="text-2xl mb-1">✅</p>
-                  <p className="text-sm text-emerald-600 font-semibold">ไม่มีใบแพทย์ค้างส่ง</p>
-                  <p className="text-xs text-emerald-500 mt-1">ทุกเคสส่งครบแล้ว</p>
-                </div>
-              )}
-              {agingCerts.map((c, i) => (
-                <div key={i} className={`flex items-center justify-between p-2.5 rounded-lg border ${c.isOverdue ? 'bg-rose-50 border-rose-100' : 'bg-amber-50 border-amber-100'}`}>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1">
-                      <p className="text-[12px] font-semibold truncate" style={{ color: P.body }}>{c.customer_name}</p>
-                      {c.hasSpecialExam && <span className="text-[9px] font-semibold px-1 rounded flex-shrink-0 bg-violet-100 text-violet-700">ตรวจพิเศษ</span>}
-                      {!c.isOverdue && <span className="text-[9px] font-semibold px-1 rounded flex-shrink-0 bg-slate-100 text-slate-500">ยังไม่เกิน</span>}
-                    </div>
-                    <p className="text-[11px]" style={{ color: P.faint }}>{c.case_number} · {c.booking_date}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0 ml-2">
-                    <p className={`text-[12px] font-bold tabular-nums ${c.isOverdue ? 'text-rose-600' : 'text-amber-700'}`}>ค้าง {c.pending}</p>
-                    <span className={`text-[10px] flex items-center gap-0.5 justify-end ${c.isOverdue ? 'text-rose-400' : 'text-amber-500'}`}>
-                      <IconAlertTriangle size={9}/> {c.daysOver} วัน
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {agingCerts.length > 0 && (
-                <button onClick={() => window.location.href='/medical'} className="w-full text-[11px] flex items-center justify-center gap-1 pt-1.5 text-slate-400 hover:text-indigo-600 transition-colors">
-                  ดูทั้งหมด <IconChevronRight size={12}/>
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.amber} title="ลูกค้าที่หายไปนาน" sub="ไม่มาใช้บริการเกิน 90 วัน" />
-            <div className="mb-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: P.indigo }}>ไฟล์ทบิน / MOU</p>
-              <div className="space-y-1.5">
-                {inactiveCustomers.mou.length === 0 && <p className="text-xs" style={{ color: P.faint }}>ไม่มี</p>}
-                {inactiveCustomers.mou.map(c => (
-                  <div key={c.name} className="flex items-center justify-between py-1 border-b" style={{ borderColor: P.line }}>
-                    <span className="text-[12px] truncate flex-1" style={{ color: P.body }}>{c.name}</span>
-                    <span className="text-[11px] ml-2 flex-shrink-0 tabular-nums" style={{ color: P.faint }}>{c.daysAgo} วัน</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="border-t pt-3" style={{ borderColor: P.line }}>
-              <p className="text-[11px] font-bold uppercase tracking-wider mb-2 text-amber-700">กลุ่มอื่นๆ (ควรติดต่อ)</p>
-              <div className="space-y-1.5">
-                {inactiveCustomers.renew.length === 0 && <p className="text-xs" style={{ color: P.faint }}>ไม่มี</p>}
-                {inactiveCustomers.renew.map(c => (
-                  <div key={c.name} className="flex items-center justify-between py-1 border-b" style={{ borderColor: P.line }}>
-                    <span className="text-[12px] truncate flex-1" style={{ color: P.body }}>{c.name}</span>
-                    <span className="text-[11px] ml-2 flex-shrink-0 tabular-nums" style={{ color: P.faint }}>{c.daysAgo} วัน</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── หนี้ค้างชำระ ── */}
-        <div className={`${CARD} p-5 mt-4`}>
-          <SectionHead dot={P.rose} title="ยอดหนี้ค้างชำระทั้งหมด" sub="รวมยอดยกมาก่อนใช้ระบบ · % = สัดส่วนของหนี้ทั้งหมด"
-            right={<span className="text-lg font-bold text-rose-600 tabular-nums">฿{loading ? '—' : totalDebt.toLocaleString()}</span>} />
-          {debtByService.length === 0 && !loading ? (
-            <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มียอดค้างชำระ</p>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {debtByService.map((d, i) => {
-                const isOpening = d.name === 'ยอดยกมา (ก่อนใช้ระบบ)'
-                const color = isOpening ? P.amber : svcColor(d.name, i)
-                const share = totalDebt > 0 ? (d.amount / totalDebt) * 100 : 0
-                return (
-                  <div key={d.name} className="rounded-lg p-3 cursor-pointer border hover:shadow-sm transition-shadow" style={{ borderColor: P.line, background: '#FCFCFE' }} onClick={() => window.location.href='/customers'}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }}/>
-                      <p className="text-[11px] truncate" style={{ color: P.muted }}>{d.name}</p>
-                    </div>
-                    <p className="text-[15px] font-bold tabular-nums" style={{ color: P.ink }}>฿{d.amount.toLocaleString()}</p>
-                    <Bar pct={share} color={color} className="mt-1.5" />
-                    <p className="text-[10px] mt-1 tabular-nums" style={{ color: P.faint }}>{fmtPct(share)} ของหนี้ทั้งหมด</p>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ── ซิม + ตรวจพิเศษย่อย ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.teal} title="ยอดขายซิมตามแพ็กเกจ" sub="% = สัดส่วนของซิมทั้งหมดในช่วงที่กรอง"
-              right={
-                <div className="text-right">
-                  <span className="text-[13px] font-bold block tabular-nums" style={{ color: P.teal }}>{loading ? '—' : simTotalCount.toLocaleString()} ซิม</span>
-                  <span className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : fmtPct(simPct)} ของยอดตรวจจริง</span>
-                </div>
-              } />
-            {simSummary.length === 0 && !loading ? (
-              <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูลในช่วงนี้</p>
-            ) : (
-              <div className="space-y-2">
-                {simSummary.map((s, i) => {
-                  const isLegacy = s.package === 'ไม่ระบุแพ็คเกจ (ข้อมูลเก่า)'
-                  const share = simTotalCount > 0 ? (s.count / simTotalCount) * 100 : 0
-                  return (
-                    <div key={i} className="rounded-lg px-3 py-2.5 border" style={{ borderColor: P.line, background: isLegacy ? '#F8FAFC' : '#FCFCFE' }}>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-[13px] font-semibold" style={{ color: isLegacy ? P.faint : P.body }}>
-                            {isLegacy ? s.package : `฿${s.package}/เดือน`}
-                          </span>
-                          <span className="text-[11px] ml-2" style={{ color: P.faint }}>{s.type}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.track, color: P.muted }}>{fmtPct(share)}</span>
-                          <span className="text-[13px] font-bold tabular-nums" style={{ color: isLegacy ? P.faint : P.teal }}>{s.count} ซิม</span>
-                        </div>
-                      </div>
-                      <Bar pct={share} color={isLegacy ? '#CBD5E1' : P.teal} className="mt-2" />
-                    </div>
-                  )
-                })}
-                <div className="flex justify-between items-center pt-2.5 border-t" style={{ borderColor: P.line }}>
-                  <span className="text-[12px] font-semibold" style={{ color: P.muted }}>รวมทั้งหมด</span>
-                  <span className="text-[13px] font-bold tabular-nums" style={{ color: P.ink }}>{simTotalCount} ซิม</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className={`${CARD} p-5`}>
-            <SectionHead dot={P.violet} title="ยอดตรวจพิเศษ" sub={`เฉลี่ย ฿${loading ? '—' : Math.round(specialAvgPerHead).toLocaleString()}/คน · % = สัดส่วนของยอดเงินตรวจพิเศษ`}
-              right={
-                <div className="text-right">
-                  <span className="text-[13px] font-bold block tabular-nums" style={{ color: P.violet }}>฿{loading ? '—' : specialExamTotal.toLocaleString()}</span>
-                  <span className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : specialExamTotalCount.toLocaleString()} คน · {loading ? '—' : fmtPct(specialPct)} ของตรวจจริง</span>
-                </div>
-              } />
-            {specialExamSummary.length === 0 && !loading ? (
-              <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูลในช่วงนี้</p>
-            ) : (
-              <div className="space-y-2">
-                {specialExamSummary.map((s, i) => {
-                  const share = specialExamTotal > 0 ? (s.amount / specialExamTotal) * 100 : 0
-                  return (
-                    <div key={i} className="rounded-lg px-3 py-2.5 border" style={{ borderColor: P.line, background: '#FCFCFE' }}>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-[13px] font-semibold" style={{ color: P.body }}>{s.name}</span>
-                          <span className="text-[11px] ml-2 tabular-nums" style={{ color: P.faint }}>×{s.count}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.violetSoft, color: P.violet }}>{fmtPct(share)}</span>
-                          <span className="text-[13px] font-bold tabular-nums" style={{ color: P.violet }}>฿{s.amount.toLocaleString()}</span>
-                        </div>
-                      </div>
-                      <Bar pct={share} color={P.violet} className="mt-2" />
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
         </div>
 
       </div>
