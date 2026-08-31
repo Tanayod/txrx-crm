@@ -42,55 +42,55 @@ export default function CompanySettingsModal({ settings, onClose, onSaved }: { s
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อบริษัท</label>
             <input value={form.company_name} onChange={(e) => setForm({...form, company_name: e.target.value})}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
           </div>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">ที่อยู่</label>
             <textarea value={form.address} onChange={(e) => setForm({...form, address: e.target.value})} rows={2}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">เลขประจำตัวผู้เสียภาษี</label>
               <input value={form.tax_id} onChange={(e) => setForm({...form, tax_id: e.target.value})}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">สาขา</label>
               <input value={form.branch} onChange={(e) => setForm({...form, branch: e.target.value})}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">โทรศัพท์</label>
               <input value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">อีเมล</label>
               <input value={form.email} onChange={(e) => setForm({...form, email: e.target.value})}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">เว็บไซต์</label>
             <input value={form.website} onChange={(e) => setForm({...form, website: e.target.value})}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
           </div>
           <div className="border-t border-gray-100 pt-3">
             <p className="text-xs font-semibold text-gray-600 mb-2">ผู้ติดต่อเริ่มต้น (แสดงในช่อง "ติดต่อกลับที่" ของใบเสร็จ ปรับต่อใบได้ตอนออกใบเสร็จ)</p>
             <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อผู้ติดต่อ</label>
             <input value={form.contact_name} onChange={(e) => setForm({...form, contact_name: e.target.value})}
               placeholder="เช่น Thidarat Maikeaw"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             <p className="text-xs text-gray-400 mt-1">เบอร์โทร/อีเมลด้านบนจะถูกใช้เป็นข้อมูลติดต่อของคนนี้ในใบเสร็จ</p>
           </div>
         </div>
         <div className="p-4 border-t border-gray-100 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
           <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50 font-medium">
+            className="px-5 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50 font-medium">
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>

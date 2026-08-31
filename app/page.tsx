@@ -22,11 +22,11 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center">
+    <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center">
       <div className="bg-white border border-gray-200 rounded-2xl p-8 w-full max-w-sm">
 
         <div className="mb-8">
-          <h1 className="text-xl font-medium text-[#185FA5]">Txrx Service</h1>
+          <h1 className="text-xl font-medium text-[#8A5C9E]">Txrx Service</h1>
           <p className="text-sm text-gray-400 mt-1">ระบบจัดการตรวจสุขภาพแรงงาน</p>
         </div>
 
@@ -38,7 +38,7 @@ export default function Home() {
               placeholder="example@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] focus:border-transparent"
+              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E] focus:border-transparent"
             />
           </div>
 
@@ -50,7 +50,7 @@ export default function Home() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] focus:border-transparent"
+              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E] focus:border-transparent"
             />
           </div>
 
@@ -59,7 +59,7 @@ export default function Home() {
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full bg-[#185FA5] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#0C447C] transition-colors disabled:opacity-50"
+            className="w-full bg-[#8A5C9E] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#6B4A85] transition-colors disabled:opacity-50"
           >
             {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
           </button>

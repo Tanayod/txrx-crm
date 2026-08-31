@@ -136,10 +136,10 @@ export default function Customers() {
     XLSX.writeFile(wb, `customers_${new Date().toISOString().slice(0,10)}.xlsx`)
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F1F5F9]">
+    <div className="flex min-h-screen bg-[#F5F1F7]">
       <Sidebar user={user} role={role} currentPath="/customers" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
         <div className="flex justify-between items-center mb-6">
@@ -151,7 +151,7 @@ export default function Customers() {
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
               <IconDownload size={15} /> Export Excel
             </button>
-            <button onClick={openCreate} className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
+            <button onClick={openCreate} className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] flex items-center gap-2">
               <IconPlus size={16} /> เพิ่มลูกค้า
             </button>
           </div>
@@ -162,13 +162,13 @@ export default function Customers() {
             <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
             <input type="text" placeholder="ค้นหาชื่อลูกค้า LINE หรือเบอร์โทร..."
               value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
           </div>
           <div className="flex gap-3 items-end">
             <div className="w-48">
               <label className="text-xs text-gray-400 mb-1 block">ประเภทลูกค้า</label>
               <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                 <option value="">ทั้งหมด</option>
                 <option value="general">ทั่วไป</option>
                 <option value="vip">VIP</option>
@@ -181,7 +181,7 @@ export default function Customers() {
                 แสดงลูกค้าที่ซ่อนไว้
               </label>
               <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-              <button onClick={() => { setSearch(''); setFilterType('') }} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+              <button onClick={() => { setSearch(''); setFilterType('') }} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
             </div>
           </div>
         </div>
@@ -212,7 +212,7 @@ export default function Customers() {
                       ฿{c.opening_balance.toLocaleString()}+
                     </button>
                   ) : (
-                    <button onClick={() => openDebtModal(c)} className="text-xs text-gray-400 hover:text-[#185FA5] hover:underline">
+                    <button onClick={() => openDebtModal(c)} className="text-xs text-gray-400 hover:text-[#8A5C9E] hover:underline">
                       ดูยอดค้าง
                     </button>
                   )}
@@ -242,22 +242,22 @@ export default function Customers() {
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ชื่อลูกค้า *</label>
                 <input value={form.customer_name} onChange={(e) => setForm({...form, customer_name: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ชื่อ LINE</label>
                 <input value={form.line_name} onChange={(e) => setForm({...form, line_name: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">เบอร์โทร</label>
                 <input value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ประเภท</label>
                 <select value={form.type} onChange={(e) => setForm({...form, type: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                   <option value="general">ทั่วไป</option>
                   <option value="vip">VIP</option>
                   <option value="credit">เครดิต</option>
@@ -268,7 +268,7 @@ export default function Customers() {
                   <label className="text-xs text-gray-500 mb-1 block">วงเงินเครดิต (ไม่บังคับ)</label>
                   <input type="number" value={form.credit_limit} onChange={(e) => setForm({...form, credit_limit: Number(e.target.value)})}
                     placeholder="ปล่อยว่างได้ถ้าไม่กำหนดวงเงิน"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
                 </div>
               )}
               {(form.type === 'credit' || form.type === 'vip') && (
@@ -292,12 +292,12 @@ export default function Customers() {
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>
                 <input value={form.note} onChange={(e) => setForm({...form, note: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
               </div>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
-              <button onClick={handleSave} className="px-4 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C]">บันทึก</button>
+              <button onClick={handleSave} className="px-4 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85]">บันทึก</button>
             </div>
           </div>
         </div>

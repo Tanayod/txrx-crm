@@ -100,13 +100,13 @@ export default function Users() {
   }
 
   if (!ready) return (
-    <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">
+    <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">
       กำลังโหลด...
     </div>
   )
 
   return (
-    <div className="flex min-h-screen bg-[#F1F5F9]">
+    <div className="flex min-h-screen bg-[#F5F1F7]">
       <Sidebar user={user} role={role} currentPath="/users" onLogout={logout} />
 
       <div className="flex-1 ml-56 p-6">
@@ -116,7 +116,7 @@ export default function Users() {
             <p className="text-xs text-gray-400 mt-0.5">เพิ่ม แก้ไข และกำหนดสิทธิ์ผู้ใช้งาน</p>
           </div>
           <button onClick={handleOpenAdd}
-            className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] flex items-center gap-2">
+            className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] flex items-center gap-2">
             <IconPlus size={16} /> เพิ่ม User
           </button>
         </div>
@@ -125,7 +125,7 @@ export default function Users() {
           <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400" />
           <input type="text" placeholder="ค้นหาชื่อ..."
             value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5] bg-white" />
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E] bg-white" />
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
@@ -141,7 +141,7 @@ export default function Users() {
             filtered.map((u) => (
               <div key={u.id} className="grid grid-cols-5 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
                 <div className="col-span-2 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#E6F1FB] flex items-center justify-center text-xs font-medium text-[#185FA5] flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[#E6F1FB] flex items-center justify-center text-xs font-medium text-[#8A5C9E] flex-shrink-0">
                     {(u.display_name || u.id)?.[0]?.toUpperCase() || 'U'}
                   </div>
                   <div>
@@ -161,7 +161,7 @@ export default function Users() {
                   </button>
                 </span>
                 <div className="flex gap-2 justify-end">
-                  <button onClick={() => handleOpenEdit(u)} className="text-gray-400 hover:text-[#185FA5]">
+                  <button onClick={() => handleOpenEdit(u)} className="text-gray-400 hover:text-[#8A5C9E]">
                     <IconEdit size={15} />
                   </button>
                 </div>
@@ -184,13 +184,13 @@ export default function Users() {
                     <label className="text-xs text-gray-500 mb-1 block">อีเมล *</label>
                     <input type="email" value={form.email}
                       onChange={(e) => setForm({...form, email: e.target.value})}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">รหัสผ่าน *</label>
                     <input type="password" value={form.password}
                       onChange={(e) => setForm({...form, password: e.target.value})}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
                   </div>
                 </>
               )}
@@ -199,13 +199,13 @@ export default function Users() {
                 <input value={form.display_name}
                   onChange={(e) => setForm({...form, display_name: e.target.value})}
                   placeholder="เช่น นพ.สมชาย / คุณสมหญิง"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Role / สิทธิ์</label>
                 <select value={form.role}
                   onChange={(e) => setForm({...form, role: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                   <option value="admin">Admin — เห็นทุกหน้า</option>
                   <option value="doctor">ทีมแพทย์ — เห็นเฉพาะหน้าแพทย์</option>
                   <option value="finance">บัญชี — เห็นการเงินและใบวางบิล</option>
@@ -224,7 +224,7 @@ export default function Users() {
                 ยกเลิก
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="px-4 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50">
+                className="px-4 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50">
                 {saving ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>

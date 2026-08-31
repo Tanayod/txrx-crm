@@ -245,10 +245,10 @@ export default function Medical() {
     fetchCases(df, '')
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F1F5F9]">
+    <div className="flex min-h-screen bg-[#F5F1F7]">
       <Sidebar user={user} role={role} currentPath="/medical" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
         <div className="flex justify-between items-center mb-6">
@@ -269,10 +269,10 @@ export default function Medical() {
               <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchCases()}
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
             <button onClick={() => fetchCases()}
-              className="bg-[#185FA5] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0C447C] transition-colors flex-shrink-0">
+              className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] transition-colors flex-shrink-0">
               ค้นหา
             </button>
           </div>
@@ -280,17 +280,17 @@ export default function Medical() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
               <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานะใบแพทย์</label>
               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                 <option value="">ทั้งหมด</option>
                 <option>รอบันทึก</option>
                 <option>รอส่งใบแพทย์</option>
@@ -305,17 +305,17 @@ export default function Medical() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
               <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
               <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
               <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">มีแล้ว</option>
                 <option value="ไม่มี">ยังไม่มี</option>
@@ -324,17 +324,17 @@ export default function Medical() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
               <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
               <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
             </div>
           </div>
           <div className="flex justify-between items-center pt-1">
             <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-            <button onClick={clearFilters} className="text-xs text-[#185FA5] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
@@ -369,14 +369,14 @@ export default function Medical() {
                     {b.location_name || '-'}
                     {b.location_url && (
                       <a href={b.location_url} target="_blank" rel="noreferrer"
-                        className="text-[#185FA5] hover:text-blue-700 flex-shrink-0" title="เปิด Google Map">
+                        className="text-[#8A5C9E] hover:text-blue-700 flex-shrink-0" title="เปิด Google Map">
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                         </svg>
                       </a>
                     )}
                   </span>
-                  <span className="text-gray-700 text-xs">{b.booked_count?.toLocaleString()} / <span className="text-[#185FA5] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
+                  <span className="text-gray-700 text-xs">{b.booked_count?.toLocaleString()} / <span className="text-[#8A5C9E] font-medium">{mc?.actual_count?.toLocaleString() ?? '-'}</span></span>
                   
                   {/* 🔹 คอลัมน์ตรวจพิเศษ */}
                   <span className="text-xs">
@@ -404,7 +404,7 @@ export default function Medical() {
                     <select
                       value={mc?.cert_status || 'รอบันทึก'}
                       onChange={(e) => handleQuickCertStatus(b, e.target.value)}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#185FA5] ${status.color}`}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#8A5C9E] ${status.color}`}
                     >
                       <option value="รอบันทึก">รอบันทึก</option>
                       <option value="รอข้อมูลแรงงาน">รอข้อมูลแรงงาน</option>
@@ -413,7 +413,7 @@ export default function Medical() {
                     </select>
                     {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
                   </span>
-                  <button onClick={() => handleOpenModal(b)} className="text-xs text-[#185FA5] hover:underline text-right font-medium">บันทึก / แนบไฟล์</button>
+                  <button onClick={() => handleOpenModal(b)} className="text-xs text-[#8A5C9E] hover:underline text-right font-medium">บันทึก / แนบไฟล์</button>
                 </div>
               )
             })
@@ -431,13 +431,13 @@ export default function Medical() {
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">วันที่ตรวจจริง</label>
                   <input type="date" value={form.exam_date} onChange={(e) => setForm({...form, exam_date: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">จำนวนตรวจจริง</label>
                   <input type="text" inputMode="numeric" value={form.actual_count || ''}
                     onChange={(e) => setForm({...form, actual_count: Number(e.target.value.replace(/\D/g,''))})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -445,11 +445,11 @@ export default function Medical() {
                   <label className="text-xs text-gray-500 mb-1 block">จำนวนใบแพทย์</label>
                   <input type="text" inputMode="numeric" value={form.cert_count || ''}
                     onChange={(e) => setForm({...form, cert_count: Number(e.target.value.replace(/\D/g,''))})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
                 </div>
                 <div className="flex items-end pb-2">
                   <button type="button" onClick={() => setForm({...form, cert_count: form.actual_count})}
-                    className="text-xs text-[#185FA5] hover:underline">
+                    className="text-xs text-[#8A5C9E] hover:underline">
                     คัดลอกจากตรวจจริง
                   </button>
                 </div>
@@ -457,16 +457,16 @@ export default function Medical() {
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>
                 <textarea value={form.doctor_note} onChange={(e) => setForm({...form, doctor_note: e.target.value})} rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
               </div>
               <label className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5 cursor-pointer">
                 <input type="checkbox" checked={form.parcel_sent}
                   onChange={(e) => setForm({...form, parcel_sent: e.target.checked})}
-                  className="rounded border-gray-300 text-[#185FA5] focus:ring-[#185FA5]" />
+                  className="rounded border-gray-300 text-[#8A5C9E] focus:ring-[#8A5C9E]" />
                 <span className="text-xs font-medium text-blue-700">📦 นำส่งพัสดุแล้ว</span>
               </label>
             </div>
-            <button onClick={handleSaveMedical} className="w-full bg-[#185FA5] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#0C447C] mb-4">
+            <button onClick={handleSaveMedical} className="w-full bg-[#8A5C9E] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#6B4A85] mb-4">
               บันทึกจำนวนตรวจจริง
             </button>
             <div className="border-t border-gray-100 pt-4">

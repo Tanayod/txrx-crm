@@ -277,10 +277,10 @@ export default function Notifications() {
   })
   const customerList = Object.values(byCustomer).sort((a: any, b: any) => b.maxDaysOver - a.maxDaysOver)
 
-  if (!ready) return <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F1F5F9]">
+    <div className="flex min-h-screen bg-[#F5F1F7]">
       <Sidebar user={user} role={role} currentPath="/notifications" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
         <div className="mb-6">
@@ -325,12 +325,12 @@ export default function Notifications() {
               </div>
               <div className="flex items-center gap-3">
                 <select value={certStatus} onChange={(e) => setCertStatus(e.target.value as any)}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                  className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                   <option value="ทั้งหมด">ทั้งหมด</option>
                   <option value="ยังไม่ส่ง">ยังไม่ส่ง</option>
                   <option value="ส่งแล้ว">ส่งแล้ว</option>
                 </select>
-                <button onClick={goToday} className="text-xs text-[#185FA5] hover:underline">วันนี้</button>
+                <button onClick={goToday} className="text-xs text-[#8A5C9E] hover:underline">วันนี้</button>
               </div>
             </div>
 
@@ -348,10 +348,10 @@ export default function Notifications() {
                 return (
                   <button key={i} onClick={() => setSelectedDate(dateStr)}
                     className={`aspect-square rounded-lg p-1.5 flex flex-col items-center justify-start text-left transition-all
-                      ${isSelected ? 'ring-2 ring-[#185FA5]' : ''}
+                      ${isSelected ? 'ring-2 ring-[#8A5C9E]' : ''}
                       ${color ? color.bg : 'bg-gray-50 hover:bg-gray-100'}
                     `}>
-                    <span className={`text-xs font-medium ${isToday ? 'bg-[#185FA5] text-white rounded-full w-5 h-5 flex items-center justify-center' : color ? color.text : 'text-gray-400'}`}>
+                    <span className={`text-xs font-medium ${isToday ? 'bg-[#8A5C9E] text-white rounded-full w-5 h-5 flex items-center justify-center' : color ? color.text : 'text-gray-400'}`}>
                       {dayNum}
                     </span>
                     {dayCases.length > 0 && (
@@ -393,7 +393,7 @@ export default function Notifications() {
                       <button onClick={() => handleUndoDelivered(c.mc_id)} className="text-xs text-gray-400 hover:text-red-500 hover:underline">ยกเลิก</button>
                     ) : (
                       <button onClick={() => handleMarkDelivered(c.mc_id)}
-                        className="text-xs bg-[#185FA5] text-white px-2.5 py-1 rounded-lg hover:bg-[#0C447C] flex items-center gap-1">
+                        className="text-xs bg-[#8A5C9E] text-white px-2.5 py-1 rounded-lg hover:bg-[#6B4A85] flex items-center gap-1">
                         <IconCheck size={11}/> นำส่งแล้ว
                       </button>
                     )}
@@ -469,7 +469,7 @@ export default function Notifications() {
                       </span>
                     )}
                   </span>
-                  <button onClick={() => window.location.href='/customers'} className="text-xs text-[#185FA5] hover:underline text-right">ดูลูกค้า</button>
+                  <button onClick={() => window.location.href='/customers'} className="text-xs text-[#8A5C9E] hover:underline text-right">ดูลูกค้า</button>
                 </div>
                 <div className="px-5 pb-3 pl-12 space-y-1">
                   {c.cases.map((cs: any, j: number) => (

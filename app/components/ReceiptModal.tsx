@@ -248,23 +248,23 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อลูกค้า (แสดงบนใบเสร็จ)</label>
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">ที่อยู่ลูกค้า</label>
               <textarea value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} rows={2}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">เลขประจำตัวผู้เสียภาษี</label>
                 <input value={customerTaxId} onChange={(e) => setCustomerTaxId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">เลขที่อ้างอิง (invoice)</label>
                 <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
               </div>
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
@@ -277,11 +277,11 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
               <p className="text-xs font-medium text-gray-600 mb-1">ผู้ติดต่อกลับ (ฝั่งบริษัทเรา แสดงในช่อง "ติดต่อกลับที่")</p>
               <div className="grid grid-cols-3 gap-3">
                 <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="ชื่อผู้ติดต่อ"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
                 <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="เบอร์โทร"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
                 <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="อีเมล"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
               </div>
             </div>
 
@@ -299,18 +299,18 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                       setIssuerSignatureId(e.target.value)
                       if (sig) setIssuerName(sig.name)
                     }}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                     <option value="">-- ไม่มีลายเซ็น (เซ็นสด) --</option>
                     {signatures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <button type="button" onClick={() => setAddingFor(addingFor === 'issuer' ? null : 'issuer')}
-                    className="px-3 py-2 text-xs border border-[#185FA5] text-[#185FA5] rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                    className="px-3 py-2 text-xs border border-[#8A5C9E] text-[#8A5C9E] rounded-lg hover:bg-blue-50 whitespace-nowrap">
                     + เพิ่มใหม่
                   </button>
                 </div>
                 {!issuerSignatureId && (
                   <input value={issuerName} onChange={(e) => setIssuerName(e.target.value)} placeholder="หรือพิมพ์ชื่อเฉยๆ (ไม่มีรูปลายเซ็น)"
-                    className="w-full mt-1.5 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                    className="w-full mt-1.5 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
                 )}
                 {addingFor === 'issuer' && (
                   <div className="mt-2 p-2.5 bg-white border border-blue-200 rounded-lg space-y-2">
@@ -321,7 +321,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                       <input type="file" accept=".png,.jpg,.jpeg" onChange={(e) => setNewSigFile(e.target.files?.[0] || null)} className="hidden"/>
                     </label>
                     <button type="button" onClick={handleAddSignature} disabled={savingSignature || !newSigName || !newSigFile}
-                      className="w-full py-1.5 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50">
+                      className="w-full py-1.5 text-xs bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50">
                       {savingSignature ? 'กำลังบันทึก...' : 'บันทึกลายเซ็นนี้เข้าคลัง'}
                     </button>
                   </div>
@@ -338,18 +338,18 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                       setApproverSignatureId(e.target.value)
                       if (sig) setApproverName(sig.name)
                     }}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#185FA5]">
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
                     <option value="">-- ไม่มีลายเซ็น (เซ็นสด) --</option>
                     {signatures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <button type="button" onClick={() => setAddingFor(addingFor === 'approver' ? null : 'approver')}
-                    className="px-3 py-2 text-xs border border-[#185FA5] text-[#185FA5] rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                    className="px-3 py-2 text-xs border border-[#8A5C9E] text-[#8A5C9E] rounded-lg hover:bg-blue-50 whitespace-nowrap">
                     + เพิ่มใหม่
                   </button>
                 </div>
                 {!approverSignatureId && (
                   <input value={approverName} onChange={(e) => setApproverName(e.target.value)} placeholder="หรือพิมพ์ชื่อเฉยๆ (ไม่มีรูปลายเซ็น)"
-                    className="w-full mt-1.5 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                    className="w-full mt-1.5 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
                 )}
                 {addingFor === 'approver' && (
                   <div className="mt-2 p-2.5 bg-white border border-blue-200 rounded-lg space-y-2">
@@ -360,7 +360,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                       <input type="file" accept=".png,.jpg,.jpeg" onChange={(e) => setNewSigFile(e.target.files?.[0] || null)} className="hidden"/>
                     </label>
                     <button type="button" onClick={handleAddSignature} disabled={savingSignature || !newSigName || !newSigFile}
-                      className="w-full py-1.5 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50">
+                      className="w-full py-1.5 text-xs bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50">
                       {savingSignature ? 'กำลังบันทึก...' : 'บันทึกลายเซ็นนี้เข้าคลัง'}
                     </button>
                   </div>
@@ -370,7 +370,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ผู้รับเอกสาร (ลูกค้า)</label>
                 <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} placeholder="ชื่อผู้รับเอกสารฝั่งลูกค้า"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
                 <p className="text-xs text-gray-400 mt-1">ฝั่งลูกค้าจะเป็นเส้นว่างให้เซ็นสดเสมอ (ไม่มีคลังลายเซ็นลูกค้า)</p>
               </div>
             </div>
@@ -397,12 +397,12 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">หมายเหตุ</label>
               <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#185FA5]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
             </div>
             <div className="bg-blue-50 rounded-lg p-3 space-y-1">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งสิ้น</span>
-                <span className="text-lg font-bold text-[#185FA5]">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                <span className="text-lg font-bold text-[#8A5C9E]">฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
               </div>
               {whtAmount > 0 && (
                 <>
@@ -421,7 +421,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
           <div className="p-4 border-t border-gray-100 flex justify-end gap-2">
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
             <button onClick={handleConfirmIssue} disabled={saving}
-              className="px-5 py-2 text-sm bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C] disabled:opacity-50 font-medium">
+              className="px-5 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50 font-medium">
               {saving ? 'กำลังออกเลขที่เอกสาร...' : 'ยืนยันออกใบเสร็จ'}
             </button>
           </div>
@@ -579,7 +579,7 @@ export default function ReceiptModal({ mode, booking, payment, companySettings, 
                 <IconBan size={14}/> ยกเลิกใบเสร็จ
               </button>
             )}
-            <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#185FA5] text-white rounded-lg hover:bg-[#0C447C]">
+            <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85]">
               <IconPrinter size={14}/> พิมพ์ / บันทึกเป็น PDF
             </button>
             <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
