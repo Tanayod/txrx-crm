@@ -83,14 +83,15 @@ export default function Dashboard() {
     mtd: 0, mtdAvg: 0, mtdPrevAvg: 0, mtdDays: 1,
     utilization: 0,
     activeCustomers: 0, totalCustomers: 0,
-    repeatRate: 0,
+    repeatRate: 0, repeatCount: 0,
     pendingPayments: 0, overdueCerts: 0, allPendingCerts: 0,
     revenue: 0, prevRevenue: 0,
     rangeTotal: 0, prevRangeTotal: 0,
     // 🔹 4 เสาหลักเพิ่มเติม
-    rangeBooked: 0,
-    rangeSim: 0,
-    rangeSpecialWorkers: 0,
+    rangeBooked: 0, prevRangeBooked: 0,
+    rangeSim: 0, prevRangeSim: 0,
+    rangeSpecialWorkers: 0, prevRangeSpecialWorkers: 0,
+    prevActiveCustomers: 0,
   })
 
   const [peakDays, setPeakDays] = useState<number[]>([0,0,0,0,0,0,0])
@@ -221,7 +222,7 @@ export default function Dashboard() {
     const rangeDiff = t2.getTime() - f.getTime()
     const prevFrom = new Date(f.getTime() - rangeDiff - 86400000).toISOString().slice(0,10)
     const prevTo = new Date(f.getTime() - 86400000).toISOString().slice(0,10)
-    let prevQuery = supabase.from('bookings').select('service_type, booked_count, medical_cases(actual_count), payments(amount_received)')
+    let prevQuery = supabase.from('bookings').select('service_type, booked_count, sim_count, customers(customer_name), medical_cases(actual_count), payments(amount_received), special_exams(total_workers)')
     prevQuery = prevQuery.gte('booking_date', prevFrom).lte('booking_date', prevTo)
     const { data: prevData } = await prevQuery
 
@@ -234,9 +235,13 @@ export default function Dashboard() {
       return s + spWorkers
     }, 0) || 0
 
-    const utilization = totalBooked > 0 ? Math.min(Math.round((totalActual/totalBooked)*100), 100) : 0
+    const utilization = totalBooked > 0 ? Math.round((totalActual/totalBooked)*100) : 0
     const rangeTotal = totalActual
     const prevRangeTotal = prevData?.reduce((s,b) => s + (getMc(b)?.actual_count || b.booked_count || 0), 0) || 0
+    const prevRangeBooked = prevData?.reduce((s,b) => s + (b.booked_count || 0), 0) || 0
+    const prevRangeSim = prevData?.reduce((s,b) => s + (b.sim_count || 0), 0) || 0
+    const prevRangeSpecialWorkers = prevData?.reduce((s,b) => s + (b.special_exams?.reduce((x: number, sp: any) => x + (sp.total_workers || 0), 0) || 0), 0) || 0
+    const prevActiveCustomers = new Set(prevData?.map(b => (b.customers as any)?.customer_name).filter(Boolean)).size
 
     // Revenue
     const revenue = rangeData?.reduce((s,b) => s + ((Array.isArray(b.payments) ? b.payments?.[0] : b.payments)?.amount_received || 0), 0) || 0
@@ -494,15 +499,16 @@ export default function Dashboard() {
       utilization,
       activeCustomers: activeSet.size,
       totalCustomers: allCustomers?.length || 0,
-      repeatRate,
+      repeatRate, repeatCount,
       pendingPayments: pendingData?.length || 0,
       overdueCerts: totalOverdueCerts,
       allPendingCerts: totalAllPendingCerts,
       revenue, prevRevenue,
       rangeTotal, prevRangeTotal,
-      rangeBooked: totalBooked,
-      rangeSim: totalSim,
-      rangeSpecialWorkers: totalSpecialWorkers,
+      rangeBooked: totalBooked, prevRangeBooked,
+      rangeSim: totalSim, prevRangeSim,
+      rangeSpecialWorkers: totalSpecialWorkers, prevRangeSpecialWorkers,
+      prevActiveCustomers,
     })
     setLoading(false)
   }
@@ -511,32 +517,39 @@ export default function Dashboard() {
   const { from, to } = getDateRange()
 
   type CmpTone = 'up' | 'down' | 'flat'
-  type CompareResult = { text: string; tone: CmpTone }
-  const compareValues = (cur: number, prev: number, minBaseForPct = 5): CompareResult => {
-    if (cur === 0 && prev === 0) return { text: 'ยังไม่มีข้อมูล', tone: 'flat' }
-    if (prev === 0) return { text: 'ไม่มีข้อมูลเทียบ', tone: 'flat' }
-    if (cur === 0) return { text: 'ยังไม่มีข้อมูลช่วงนี้', tone: 'flat' }
+  type CompareResult = { pctText: string | null; absText: string; tone: CmpTone; note: string | null }
+  // ค่าเทียบ = ช่วงเวลาก่อนหน้าที่ยาวเท่ากัน (เดือนนี้↔เดือนก่อน ฯลฯ)
+  const fmtDelta = (n: number, unit = '') => {
+    const sign = n > 0 ? '+' : n < 0 ? '−' : '±'
+    const mag = Math.abs(Math.round(n)).toLocaleString()
+    return unit === '฿' ? `${sign}฿${mag}` : `${sign}${mag}${unit ? ' ' + unit : ''}`
+  }
+  const compareValues = (cur: number, prev: number, unit = '', minBaseForPct = 5): CompareResult => {
+    if (cur === 0 && prev === 0) return { pctText: null, absText: '', tone: 'flat', note: 'ยังไม่มีข้อมูล' }
+    if (prev === 0) return { pctText: null, absText: fmtDelta(cur, unit), tone: 'up', note: 'ช่วงก่อนยังไม่มีข้อมูล' }
     const diff = cur - prev
-    const p = (diff / prev) * 100
-    const up = p >= 0
-    if (prev < minBaseForPct) return { text: `${up ? '▲' : '▼'} ${Math.abs(diff).toLocaleString()}`, tone: up ? 'up' : 'down' }
-    return { text: `${up ? '+' : '−'}${Math.abs(Math.round(p))}%`, tone: up ? 'up' : 'down' }
+    const up = diff >= 0
+    const tone: CmpTone = diff === 0 ? 'flat' : up ? 'up' : 'down'
+    const pctText = prev >= minBaseForPct ? `${up ? '+' : '−'}${Math.abs(Math.round((diff / prev) * 100))}%` : null
+    return { pctText, absText: fmtDelta(diff, unit), tone, note: null }
   }
 
-  const TrendPill = ({ cur, prev, label, onDark }: { cur: number, prev: number, label?: string, onDark?: boolean }) => {
-    const r = compareValues(cur, prev)
+  const TrendPill = ({ cur, prev, label, unit = '', onDark }: { cur: number, prev: number, label?: string, unit?: string, onDark?: boolean }) => {
+    const r = compareValues(cur, prev, unit)
     const base = 'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums'
     const tone = onDark
       ? { up: 'bg-white/15 text-emerald-200', down: 'bg-white/15 text-rose-200', flat: 'bg-white/10 text-white/60' }
       : { up: 'bg-emerald-50 text-emerald-700', down: 'bg-rose-50 text-rose-600', flat: 'bg-slate-100 text-slate-500' }
+    const capTone = onDark ? 'text-white/55' : 'text-slate-400'
     return (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
         <span className={`${base} ${tone[r.tone]}`}>
           {r.tone === 'up' && <IconTrendingUp size={11}/>}
           {r.tone === 'down' && <IconTrendingDown size={11}/>}
-          {r.text}
+          {r.note ?? r.pctText ?? r.absText}
         </span>
-        {label && <span className={`text-[11px] ${onDark ? 'text-white/55' : 'text-slate-400'}`}>{label}</span>}
+        {!r.note && r.pctText && <span className={`text-[11px] tabular-nums ${capTone}`}>{r.absText}</span>}
+        {label && <span className={`text-[11px] ${capTone}`}>{label}</span>}
       </span>
     )
   }
@@ -544,10 +557,12 @@ export default function Dashboard() {
   // ── helpers ──
   const maxCust = (topCustomers[0]?.count as number) || 1
   const fmtPct = (n: number) => `${n > 0 && n < 10 ? n.toFixed(1) : Math.round(n)}%`
+  const fmtBaht = (n: number) => `฿${Math.round(n || 0).toLocaleString()}`
+  const cmpLabel = (filterDateFrom && filterDateTo) ? 'เทียบช่วงก่อน' : 'เทียบเดือนก่อน'
   const pctOfActual = (n: number) => (kpi.rangeTotal > 0 ? (n / kpi.rangeTotal) * 100 : 0)
   const specialPct = pctOfActual(kpi.rangeSpecialWorkers)
   const simPct = pctOfActual(kpi.rangeSim)
-  const showUpRate = kpi.rangeBooked > 0 ? (kpi.rangeTotal / kpi.rangeBooked) * 100 : 0
+  const actualVsBooked = kpi.rangeBooked > 0 ? (kpi.rangeTotal / kpi.rangeBooked) * 100 : 0
   const simTotalCount = simSummary.reduce((s: number, x: any) => s + x.count, 0)
   const specialAvgPerHead = specialExamTotalCount > 0 ? specialExamTotal / specialExamTotalCount : 0
 
@@ -582,20 +597,23 @@ export default function Dashboard() {
 
   const pillars = [
     { key: 'booked', label: 'ยอดจองรวม', en: 'Booked', icon: IconCalendarStats, color: P.navy2,
-      value: kpi.rangeBooked, unit: 'คน', note: 'แผนจองในช่วงที่เลือก', bar: 100, badge: null as string | null },
+      value: kpi.rangeBooked, unit: 'คน', note: 'จำนวนคนที่นัดหมายเข้ามาในช่วงนี้', bar: 100, badge: null as string | null,
+      trend: { cur: kpi.rangeBooked, prev: kpi.prevRangeBooked, unit: 'คน' } },
     { key: 'actual', label: 'ยอดตรวจจริง', en: 'Actual', icon: IconActivityHeartbeat, color: P.indigo,
-      value: kpi.rangeTotal, unit: 'คน', note: `= ${fmtPct(showUpRate)} ของยอดจอง`, bar: showUpRate, badge: fmtPct(showUpRate),
-      trend: { cur: kpi.rangeTotal, prev: kpi.prevRangeTotal } },
+      value: kpi.rangeTotal, unit: 'คน', note: `มาตรวจจริง ${fmtPct(actualVsBooked)} ของยอดจอง (${kpi.rangeBooked.toLocaleString()} คน)`, bar: actualVsBooked, badge: null as string | null,
+      trend: { cur: kpi.rangeTotal, prev: kpi.prevRangeTotal, unit: 'คน' } },
     { key: 'special', label: 'ยอดตรวจพิเศษ', en: 'Special', icon: IconMicroscope, color: P.violet,
-      value: kpi.rangeSpecialWorkers, unit: 'คน', note: `คิดเป็น ${fmtPct(specialPct)} ของยอดตรวจจริง`, bar: specialPct, badge: fmtPct(specialPct) },
+      value: kpi.rangeSpecialWorkers, unit: 'คน', note: `${fmtPct(specialPct)} ของผู้มาตรวจทั้งหมด (${kpi.rangeTotal.toLocaleString()} คน)`, bar: specialPct, badge: fmtPct(specialPct),
+      trend: { cur: kpi.rangeSpecialWorkers, prev: kpi.prevRangeSpecialWorkers, unit: 'คน' } },
     { key: 'sim', label: 'ยอดขายซิม', en: 'Sim', icon: IconDeviceSim, color: P.teal,
-      value: kpi.rangeSim, unit: 'ซิม', note: `คิดเป็น ${fmtPct(simPct)} ของยอดตรวจจริง`, bar: simPct, badge: fmtPct(simPct) },
+      value: kpi.rangeSim, unit: 'ซิม', note: `เฉลี่ย ${fmtPct(simPct)} เทียบผู้มาตรวจ (${kpi.rangeTotal.toLocaleString()} คน)`, bar: simPct, badge: fmtPct(simPct),
+      trend: { cur: kpi.rangeSim, prev: kpi.prevRangeSim, unit: 'ซิม' } },
   ]
 
   const heroStats = [
-    { label: 'วันนี้', value: kpi.dtd, cur: kpi.dtd, prev: kpi.dtdPrev, sub: `เทียบเมื่อวาน ${kpi.dtdPrev.toLocaleString()} คน` },
-    { label: 'สัปดาห์นี้', value: kpi.wtd, cur: kpi.wtdAvg, prev: kpi.wtdPrevAvg, sub: `เฉลี่ย ${loading ? '—' : kpi.wtdAvg.toFixed(1)}/วัน` },
-    { label: 'เดือนนี้', value: kpi.mtd, cur: kpi.mtdAvg, prev: kpi.mtdPrevAvg, sub: `เฉลี่ย ${loading ? '—' : kpi.mtdAvg.toFixed(1)}/วัน` },
+    { label: 'วันนี้', value: kpi.dtd, cur: kpi.dtd, prev: kpi.dtdPrev, cmp: 'เทียบเมื่อวาน', unit: 'คน', sub: `เมื่อวาน ${kpi.dtdPrev.toLocaleString()} คน` },
+    { label: 'สัปดาห์นี้', value: kpi.wtd, cur: kpi.wtdAvg, prev: kpi.wtdPrevAvg, cmp: 'เทียบสัปดาห์ก่อน (เฉลี่ย/วัน)', unit: 'คน', sub: `เฉลี่ย ${loading ? '—' : kpi.wtdAvg.toFixed(1)}/วัน · สัปดาห์ก่อน ${loading ? '—' : kpi.wtdPrevAvg.toFixed(1)}/วัน` },
+    { label: 'เดือนนี้', value: kpi.mtd, cur: kpi.mtdAvg, prev: kpi.mtdPrevAvg, cmp: 'เทียบเดือนก่อน (เฉลี่ย/วัน)', unit: 'คน', sub: `เฉลี่ย ${loading ? '—' : kpi.mtdAvg.toFixed(1)}/วัน · เดือนก่อน ${loading ? '—' : kpi.mtdPrevAvg.toFixed(1)}/วัน` },
   ]
 
   // ── widget content ──
@@ -626,10 +644,12 @@ export default function Dashboard() {
               <span className="text-xs font-medium ml-1.5" style={{ color: P.faint }}>{p.unit}</span>
             </p>
             <Bar pct={loading ? 0 : p.bar} color={p.color} className="mt-3" />
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-[11px]" style={{ color: P.faint }}>{loading ? '—' : p.note}</p>
-              {p.trend && <TrendPill cur={p.trend.cur} prev={p.trend.prev} />}
-            </div>
+            <p className="text-[11px] mt-2" style={{ color: P.faint }}>{loading ? '—' : p.note}</p>
+            {p.trend && !loading && (
+              <div className="mt-1.5">
+                <TrendPill cur={p.trend.cur} prev={p.trend.prev} unit={p.trend.unit} label={cmpLabel} />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -641,25 +661,31 @@ export default function Dashboard() {
           <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>อัตรามาตรวจจริง</p>
           <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : `${kpi.utilization}%`}</p>
           <Bar pct={kpi.utilization} color={P.indigo} className="mt-2.5" />
-          <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>ตรวจจริง ÷ จองไว้</p>
+          <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>
+            {loading ? '—' : `มาตรวจ ${kpi.rangeTotal.toLocaleString()} คน จากจอง ${kpi.rangeBooked.toLocaleString()} คน`}
+            {!loading && kpi.utilization > 100 && <span style={{ color: P.emerald }}> · มามากกว่าที่จอง</span>}
+          </p>
         </div>
         <div className={`${CARD} p-4 cursor-pointer hover:border-indigo-200 transition-colors`} onClick={() => window.location.href='/payments'}>
           <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>รับเงินช่วงนี้</p>
-          <p className="text-[22px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.teal }}>฿{loading ? '—' : kpi.revenue.toLocaleString()}</p>
-          <div className="mt-2"><TrendPill cur={kpi.revenue} prev={kpi.prevRevenue} label="เทียบช่วงก่อน" /></div>
+          <p className="text-[22px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.teal }}>{loading ? '฿—' : fmtBaht(kpi.revenue)}</p>
+          <div className="mt-2"><TrendPill cur={kpi.revenue} prev={kpi.prevRevenue} label={cmpLabel} unit="฿" /></div>
         </div>
         <div className={`${CARD} p-4`}>
           <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>ลูกค้าที่ใช้บริการ</p>
           <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : kpi.activeCustomers.toLocaleString()}</p>
           <p className="text-[11px] mt-2" style={{ color: P.faint }}>
-            {kpi.totalCustomers > 0 ? `${fmtPct((kpi.activeCustomers / kpi.totalCustomers) * 100)} ` : ''}จากทั้งหมด {kpi.totalCustomers.toLocaleString()} ราย
+            {kpi.totalCustomers > 0 ? `${fmtPct((kpi.activeCustomers / kpi.totalCustomers) * 100)} ` : ''}จากลูกค้าทั้งหมด {kpi.totalCustomers.toLocaleString()} ราย
           </p>
+          {!loading && <div className="mt-1.5"><TrendPill cur={kpi.activeCustomers} prev={kpi.prevActiveCustomers} label={cmpLabel} unit="ราย" /></div>}
         </div>
         <div className={`${CARD} p-4`}>
           <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: P.faint }}>ลูกค้ากลับมาซ้ำ</p>
           <p className="text-[26px] leading-none font-bold mt-1.5 tabular-nums" style={{ color: P.ink }}>{loading ? '—' : `${kpi.repeatRate}%`}</p>
           <Bar pct={kpi.repeatRate} color={P.violet} className="mt-2.5" />
-          <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>ของลูกค้าที่ใช้บริการช่วงนี้</p>
+          <p className="text-[11px] mt-1.5" style={{ color: P.faint }}>
+            {loading ? '—' : `${kpi.repeatCount.toLocaleString()} จาก ${kpi.activeCustomers.toLocaleString()} ราย มาใช้บริการ 2 ครั้งขึ้นไปในช่วงนี้`}
+          </p>
         </div>
       </div>
     ),
@@ -707,7 +733,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: P.track, color: P.muted }}>{fmtPct(share)}</span>
                     <span className="text-[13px] font-bold tabular-nums" style={{ color: P.ink }}>{s.count.toLocaleString()}</span>
-                    <TrendPill cur={s.count} prev={prev} />
+                    <TrendPill cur={s.count} prev={prev} unit="คน" />
                   </div>
                 </div>
                 <Bar pct={share} color={color} />
@@ -985,9 +1011,10 @@ export default function Dashboard() {
                 <p className="text-[11px] uppercase tracking-wider text-white/60 font-semibold">ยอดตรวจ{s.label}</p>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-2xl font-bold text-white tabular-nums">{loading ? '—' : s.value.toLocaleString()}</span>
-                  <TrendPill cur={s.cur} prev={s.prev} onDark />
+                  <span className="text-[11px] text-white/50">คน</span>
                 </div>
-                <p className="text-[11px] text-white/55 mt-0.5">{s.sub}</p>
+                {!loading && <div className="mt-1"><TrendPill cur={s.cur} prev={s.prev} label={s.cmp} unit={s.unit} onDark /></div>}
+                <p className="text-[11px] text-white/55 mt-1">{s.sub}</p>
               </div>
             ))}
           </div>
