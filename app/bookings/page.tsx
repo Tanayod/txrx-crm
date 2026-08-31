@@ -325,10 +325,10 @@ export default function Bookings() {
     fetchBookings(getDefaultFrom(), '')
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1F7]">
+    <div className="flex min-h-screen bg-[#F6F7FB]">
       <Sidebar user={user} role={role} currentPath="/bookings" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
 
@@ -341,7 +341,7 @@ export default function Bookings() {
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
               <IconDownload size={15}/> Export
             </button>
-            <button onClick={openCreate} className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] flex items-center gap-2 transition-colors">
+            <button onClick={openCreate} className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81] flex items-center gap-2 transition-colors">
               <IconPlus size={16}/> จองคิวใหม่
             </button>
           </div>
@@ -355,10 +355,10 @@ export default function Bookings() {
               <input type="text" placeholder="ค้นหาลูกค้า เลขจอง หรือสถานที่..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchBookings()}
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <button onClick={() => fetchBookings()}
-              className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] transition-colors flex-shrink-0">
+              className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81] transition-colors flex-shrink-0">
               ค้นหา
             </button>
           </div>
@@ -366,17 +366,17 @@ export default function Bookings() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
               <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">กะ</label>
               <select value={filterShift} onChange={(e) => setFilterShift(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option>เช้า</option><option>บ่าย</option><option>เย็น</option>
               </select>
@@ -384,7 +384,7 @@ export default function Bookings() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ประเภทบริการ</label>
               <select value={filterService} onChange={(e) => setFilterService(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option>ตรวจนอกสถานที่ (Mobile)</option>
                 <option>คลินิก</option><option>Walk-in</option>
@@ -394,7 +394,7 @@ export default function Bookings() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานที่</label>
               <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
               </select>
@@ -402,7 +402,7 @@ export default function Bookings() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานะชำระ</label>
               <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option>ชำระเงินแล้ว</option><option>ยังไม่ชำระ</option>
                 <option>ค้างชำระ</option><option>เครดิต</option>
@@ -413,17 +413,17 @@ export default function Bookings() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
               <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
               <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
               <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">มีแล้ว</option>
                 <option value="ไม่มี">ยังไม่มี</option>
@@ -432,17 +432,17 @@ export default function Bookings() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
               <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
               <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
           </div>
           <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
-            <button onClick={clearFilters} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#4338CA] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
@@ -477,7 +477,7 @@ export default function Bookings() {
                   <span className="text-xs">
                     <span className="text-gray-700">{b.booked_count || 0}</span>
                     <span className="text-gray-300 mx-0.5">/</span>
-                    <span className="text-[#8A5C9E] font-semibold">{mc?.actual_count ?? '-'}</span>
+                    <span className="text-[#4338CA] font-semibold">{mc?.actual_count ?? '-'}</span>
                   </span>
                   {/* 🔹 แสดงยอดตรวจพิเศษ */}
                   <span className="text-xs">
@@ -499,7 +499,7 @@ export default function Bookings() {
                     <select
                       value={(Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases)?.cert_status || 'รอบันทึก'}
                       onChange={(e) => handleQuickCertStatus(b, e.target.value)}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#8A5C9E] ${medStatus.color}`}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#4338CA] ${medStatus.color}`}
                     >
                       <option value="รอบันทึก">รอบันทึก</option>
                       <option value="รอข้อมูลแรงงาน">รอข้อมูลแรงงาน</option>
@@ -552,7 +552,7 @@ export default function Bookings() {
                           <p className="text-xs text-gray-400 mb-0.5">Google Map</p>
                           <a href={b.location_url} target="_blank" rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="text-xs text-[#8A5C9E] hover:underline flex items-center gap-1">
+                            className="text-xs text-[#4338CA] hover:underline flex items-center gap-1">
                             เปิด Google Map
                           </a>
                         </div>
@@ -586,7 +586,7 @@ export default function Bookings() {
                   onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); setForm({...form, customer_id:'', customer_name_display:''}) }}
                   onFocus={() => setShowCustomerDropdown(true)}
                   placeholder="พิมพ์ค้นหาลูกค้า..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
                   <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-10 max-h-40 overflow-y-auto mt-1">
                     {filteredCustomers.map(c => (
@@ -603,12 +603,12 @@ export default function Bookings() {
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วันที่ตรวจ *</label>
                   <input type="date" value={form.booking_date} onChange={(e) => setForm({...form, booking_date: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">กะ</label>
                   <select value={form.shift} onChange={(e) => setForm({...form, shift: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option>เช้า</option><option>บ่าย</option><option>เย็น</option>
                   </select>
                 </div>
@@ -616,7 +616,7 @@ export default function Bookings() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ประเภทบริการ</label>
                 <select value={form.service_type} onChange={(e) => setForm({...form, service_type: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                   <option>ตรวจนอกสถานที่ (Mobile)</option>
                   <option>คลินิก</option><option>Walk-in</option>
                   <option>ไฟล์ทบิน</option>
@@ -656,7 +656,7 @@ export default function Bookings() {
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">จังหวัด</label>
                   <select value={form.province} onChange={(e) => setForm({...form, province: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option value="">เลือกจังหวัด</option>
                     {provinces.map(p => <option key={p}>{p}</option>)}
                   </select>
@@ -664,7 +664,7 @@ export default function Bookings() {
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">สัญชาติ</label>
                   <select value={form.nationality} onChange={(e) => setForm({...form, nationality: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option>พม่า</option><option>กัมพูชา</option>
                     <option>ลาว</option><option>เวียดนาม</option><option>อื่นๆ</option>
                   </select>
@@ -673,7 +673,7 @@ export default function Bookings() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ชื่อสถานที่</label>
                 <select value={form.location_name} onChange={(e) => setForm({...form, location_name: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                   <option value="">เลือกสถานที่</option>
                   {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
                 </select>
@@ -682,7 +682,7 @@ export default function Bookings() {
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ลิ้งค์ Google Map</label>
                 <input value={form.location_url} onChange={(e) => setForm({...form, location_url: e.target.value})}
                   placeholder="https://maps.app.goo.gl/..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -690,14 +690,14 @@ export default function Bookings() {
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">เวลา</label>
                   <input value={form.exam_time} onChange={(e) => setForm({...form, exam_time: e.target.value})}
                     placeholder="8.00น.-12.00น."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">จำนวนจอง (คน)</label>
                   <input type="text" inputMode="numeric" value={form.booked_count || ''}
                     onChange={(e) => setForm({...form, booked_count: Number(e.target.value.replace(/\D/g,''))})}
                     placeholder="0"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 </div>
                 {/* 🔹 ช่องตรวจพิเศษ */}
                 <div>
@@ -714,7 +714,7 @@ export default function Bookings() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">ซิมทรู</label>
                 <select value={form.sim_true_status} onChange={(e) => setForm({...form, sim_true_status: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                   <option>แจ้งหรือแล้ว</option><option>คำกล่าวประสาน</option>
                   <option>รอคำตอบลูกค้า</option><option>อนุญาต</option>
                   <option>ไม่อนุญาต</option><option>walk-in คลินิก</option>
@@ -771,13 +771,13 @@ export default function Bookings() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
                 <textarea value={form.admin_note} onChange={(e) => setForm({...form, admin_note: e.target.value})} rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
             </div>
             <div className="p-6 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-sm text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">ยกเลิก</button>
               <button onClick={handleSave} disabled={saving}
-                className="px-5 py-2.5 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50 transition-colors font-medium">
+                className="px-5 py-2.5 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81] disabled:opacity-50 transition-colors font-medium">
                 {saving ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
             </div>

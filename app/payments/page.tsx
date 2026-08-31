@@ -513,10 +513,10 @@ export default function Payments() {
     fetchBookings(getDefaultFrom(), '')
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1F7]">
+    <div className="flex min-h-screen bg-[#F6F7FB]">
       <Sidebar user={user} role={role} currentPath="/payments" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
 
@@ -532,7 +532,7 @@ export default function Payments() {
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
               <IconDownload size={15}/> Export
             </button>
-            <button onClick={openSplitModal} className="border border-[#8A5C9E] text-[#8A5C9E] px-4 py-2 rounded-lg text-sm hover:bg-blue-50 flex items-center gap-2 transition-colors">
+            <button onClick={openSplitModal} className="border border-[#4338CA] text-[#4338CA] px-4 py-2 rounded-lg text-sm hover:bg-blue-50 flex items-center gap-2 transition-colors">
               <IconPlus size={15}/> ตัดชำระหลายจอง
             </button>
           </div>
@@ -545,10 +545,10 @@ export default function Payments() {
               <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchBookings()}
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <button onClick={() => fetchBookings()}
-              className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] transition-colors flex-shrink-0">
+              className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81] transition-colors flex-shrink-0">
               ค้นหา
             </button>
           </div>
@@ -556,17 +556,17 @@ export default function Payments() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
               <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานะ</label>
               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option>ชำระเงินแล้ว</option><option>ยังไม่ชำระ</option>
                 <option>ค้างชำระ</option><option>เครดิต</option>
@@ -575,7 +575,7 @@ export default function Payments() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วิธีชำระ</label>
               <select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="transfer">โอนเงิน</option>
                 <option value="cash">เงินสด</option>
@@ -587,17 +587,17 @@ export default function Payments() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
               <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
               <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
               <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">มีแล้ว</option>
                 <option value="ไม่มี">ยังไม่มี</option>
@@ -606,17 +606,17 @@ export default function Payments() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
               <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
               <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สลิป</label>
               <select value={filterSlip} onChange={(e) => setFilterSlip(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">แนบสลิปแล้ว</option>
                 <option value="ไม่มี">ยังไม่แนบสลิป</option>
@@ -625,7 +625,7 @@ export default function Payments() {
           </div>
           <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
-            <button onClick={clearFilters} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#4338CA] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
@@ -718,7 +718,7 @@ export default function Payments() {
                     <span className="text-xs text-amber-500 font-medium">⚠️ ยังไม่แนบ</span>
                   )}
                 </span>
-                <button onClick={() => handleOpenModal(b)} className="text-xs text-[#8A5C9E] hover:underline text-right font-medium">บันทึก</button>
+                <button onClick={() => handleOpenModal(b)} className="text-xs text-[#4338CA] hover:underline text-right font-medium">บันทึก</button>
               </div>
             )
           })}
@@ -802,13 +802,13 @@ export default function Payments() {
                       <label className="flex items-center gap-1.5 cursor-pointer">
                         <input type="radio" checked={form.vat_mode === 'exclusive'}
                           onChange={() => setForm({...form, vat_mode: 'exclusive'})}
-                          className="text-[#8A5C9E]"/>
+                          className="text-[#4338CA]"/>
                         <span className="text-xs text-gray-600">ราคา + VAT (บวกเพิ่ม)</span>
                       </label>
                       <label className="flex items-center gap-1.5 cursor-pointer">
                         <input type="radio" checked={form.vat_mode === 'inclusive'}
                           onChange={() => setForm({...form, vat_mode: 'inclusive'})}
-                          className="text-[#8A5C9E]"/>
+                          className="text-[#4338CA]"/>
                         <span className="text-xs text-gray-600">ราคารวม VAT แล้ว</span>
                       </label>
                     </div>
@@ -849,7 +849,7 @@ export default function Payments() {
                   )}
                   <div className="flex justify-between border-t border-gray-100 pt-1.5">
                     <span className="text-sm font-semibold text-gray-700">ยอดรวมทั้งหมด</span>
-                    <span className="text-lg font-bold text-[#8A5C9E]">฿{grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span className="text-lg font-bold text-[#4338CA]">฿{grandTotalSelected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   {creditUsed > 0 && (
                     <div className="flex justify-between text-xs text-emerald-600">
@@ -888,7 +888,7 @@ export default function Payments() {
                       setForm({...form, amount_received: isNaN(num) ? 0 : num, amountTouched: true})
                     }}
                     placeholder={`${netDue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เท่ากับยอดที่ต้องชำระ)`}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                   <button type="button" onClick={() => { setAmountReceivedText('0'); setForm({...form, amount_received: 0, amountTouched: true}) }}
                     className="px-3 py-2.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 whitespace-nowrap">
                     ยังไม่จ่าย (0)
@@ -919,7 +919,7 @@ export default function Payments() {
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วิธีชำระ</label>
                   <select value={form.method}
                     onChange={(e) => setForm({...form, method: e.target.value, bank_account_id: e.target.value === 'transfer' ? form.bank_account_id : ''})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option value="transfer">โอนเงิน</option>
                     <option value="cash">เงินสด</option>
                     <option value="credit">เครดิต</option>
@@ -928,7 +928,7 @@ export default function Payments() {
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">สถานะ</label>
                   <select value={form.payment_status} onChange={(e) => setForm({...form, payment_status: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option>ชำระเงินแล้ว</option><option>ยังไม่ชำระ</option>
                     <option>ค้างชำระ</option><option>เครดิต</option>
                   </select>
@@ -938,7 +938,7 @@ export default function Payments() {
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">บัญชีที่รับโอน</label>
                   <select value={form.bank_account_id} onChange={(e) => setForm({...form, bank_account_id: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option value="">เลือกบัญชี...</option>
                     {bankAccounts.map((acc) => (
                       <option key={acc.id} value={acc.id}>{getBankAccountLabel(acc)} ({acc.account_number})</option>
@@ -950,21 +950,21 @@ export default function Payments() {
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่ใบวางบิล</label>
                 <input value={form.invoice_no} onChange={(e) => setForm({...form, invoice_no: e.target.value})}
                   placeholder="INV-XXXX"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">เลขที่อ้างอิง</label>
                 <input value={form.ref_no} onChange={(e) => setForm({...form, ref_no: e.target.value})}
                   placeholder="เลขที่อ้างอิงการโอน..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
                 <textarea value={form.note} onChange={(e) => setForm({...form, note: e.target.value})} rows={2}
                   placeholder="หมายเหตุเพิ่มเติม..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
-              <button onClick={handleSave} disabled={savingPayment} className="w-full bg-[#8A5C9E] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#6B4A85] disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+              <button onClick={handleSave} disabled={savingPayment} className="w-full bg-[#4338CA] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#312E81] disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                 {savingPayment ? 'กำลังบันทึก...' : 'บันทึกการชำระเงิน'}
               </button>
               <div className="border-t border-gray-100 pt-4">
@@ -997,7 +997,7 @@ export default function Payments() {
                     onClick={() => setReceiptModal({ mode: 'create' })}
                     disabled={!getP(selected)?.id}
                     title={!getP(selected)?.id ? 'กรุณาบันทึกการชำระเงินก่อน' : ''}
-                    className="flex items-center gap-1 text-xs bg-[#8A5C9E] text-white px-3 py-1.5 rounded-lg hover:bg-[#6B4A85] disabled:opacity-40 disabled:cursor-not-allowed">
+                    className="flex items-center gap-1 text-xs bg-[#4338CA] text-white px-3 py-1.5 rounded-lg hover:bg-[#312E81] disabled:opacity-40 disabled:cursor-not-allowed">
                     <IconReceipt size={13}/> ออกใบเสร็จ
                   </button>
                 </div>
@@ -1009,7 +1009,7 @@ export default function Payments() {
                           <p className={`text-xs font-medium truncate ${rc.is_cancelled ? 'text-red-500 line-through' : 'text-blue-700'}`}>{rc.receipt_no}</p>
                           <p className="text-xs text-gray-400">{rc.issue_date} · ฿{rc.total_amount?.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
                         </div>
-                        <button onClick={() => setReceiptModal({ mode: 'view', receipt: rc })} className="text-xs text-[#8A5C9E] hover:underline flex-shrink-0">
+                        <button onClick={() => setReceiptModal({ mode: 'view', receipt: rc })} className="text-xs text-[#4338CA] hover:underline flex-shrink-0">
                           {rc.is_cancelled ? 'ดู' : 'พิมพ์ซ้ำ'}
                         </button>
                       </div>
@@ -1043,18 +1043,18 @@ export default function Payments() {
                   <IconSearch size={14} className="absolute left-3 top-2.5 text-gray-400"/>
                   <input type="text" value={splitSearch} onChange={(e) => setSplitSearch(e.target.value)}
                     placeholder="พิมพ์ชื่อลูกค้า..."
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่ม</label>
                 <input type="date" value={splitDateFrom} onChange={(e) => setSplitDateFrom(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">วันที่สิ้นสุด</label>
                 <input type="date" value={splitDateTo} onChange={(e) => setSplitDateTo(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
             </div>
 
@@ -1065,9 +1065,9 @@ export default function Payments() {
                   <input type="text" inputMode="numeric" value={splitTotalReceived}
                     onChange={(e) => setSplitTotalReceived(e.target.value === '' ? '' : Number(e.target.value.replace(/\D/g,'')))}
                     placeholder="0"
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                   <button type="button" onClick={autoDistributeSplit}
-                    className="px-3 py-2 text-xs bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] whitespace-nowrap">
+                    className="px-3 py-2 text-xs bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81] whitespace-nowrap">
                     แบ่งอัตโนมัติ
                   </button>
                 </div>
@@ -1077,7 +1077,7 @@ export default function Payments() {
                 <label className="text-xs text-gray-500 mb-1 block">วิธีชำระ</label>
                 <select value={splitSource.method}
                   onChange={(e) => setSplitSource({...splitSource, method: e.target.value, bank_account_id: e.target.value === 'transfer' ? splitSource.bank_account_id : ''})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                   <option value="transfer">โอนเงิน</option>
                   <option value="cash">เงินสด</option>
                   <option value="credit">เครดิต</option>
@@ -1087,7 +1087,7 @@ export default function Payments() {
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">บัญชีที่รับโอน</label>
                   <select value={splitSource.bank_account_id} onChange={(e) => setSplitSource({...splitSource, bank_account_id: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option value="">เลือกบัญชี...</option>
                     {bankAccounts.map((acc) => (
                       <option key={acc.id} value={acc.id}>{getBankAccountLabel(acc)} ({acc.account_number})</option>
@@ -1108,7 +1108,7 @@ export default function Payments() {
             <div className="px-4 pt-3 pb-1 grid grid-cols-3 gap-2">
               <div className="bg-blue-50 rounded-xl px-4 py-2 text-center">
                 <p className="text-xs text-blue-500">ยอดที่โอนมา</p>
-                <p className="text-lg font-bold text-[#8A5C9E]">฿{(Number(splitTotalReceived) || 0).toLocaleString()}</p>
+                <p className="text-lg font-bold text-[#4338CA]">฿{(Number(splitTotalReceived) || 0).toLocaleString()}</p>
               </div>
               <div className="bg-emerald-50 rounded-xl px-4 py-2 text-center">
                 <p className="text-xs text-emerald-500">ยอดที่ตัดแล้ว</p>
@@ -1152,7 +1152,7 @@ export default function Payments() {
                           disabled={!sp.selected}
                           onChange={(e) => updateSplitItem(sp.booking_id, { amount: Number(e.target.value.replace(/\D/g,'')) })}
                           placeholder="0"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E] disabled:bg-gray-50 disabled:text-gray-300"/>
+                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA] disabled:bg-gray-50 disabled:text-gray-300"/>
                       </div>
                     </div>
                   ))}
@@ -1163,7 +1163,7 @@ export default function Payments() {
               <button onClick={() => setShowSplitModal(false)} className="px-5 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSplitSave}
                 disabled={splitSaving || splitPayments.filter(s => s.selected && s.amount > 0).length === 0}
-                className="px-5 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50 font-medium transition-colors">
+                className="px-5 py-2 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81] disabled:opacity-50 font-medium transition-colors">
                 {splitSaving ? 'กำลังบันทึก...' : `บันทึก (${splitPayments.filter(s => s.selected).length} รายการ)`}
               </button>
             </div>

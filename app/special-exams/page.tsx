@@ -310,10 +310,10 @@ export default function SpecialExams() {
     setFilterExamType(''); setFilterHasBooking('')
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1F7]">
+    <div className="flex min-h-screen bg-[#F6F7FB]">
       <Sidebar user={user} role={role} currentPath="/special-exams" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
 
@@ -329,7 +329,7 @@ export default function SpecialExams() {
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors">
               <IconDownload size={15}/> Export
             </button>
-            <button onClick={openCreate} className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] flex items-center gap-2 transition-colors">
+            <button onClick={openCreate} className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81] flex items-center gap-2 transition-colors">
               <IconPlus size={16}/> บันทึกการตรวจ
             </button>
           </div>
@@ -342,29 +342,29 @@ export default function SpecialExams() {
               <IconSearch size={15} className="absolute left-3 top-2.5 text-gray-400"/>
               <input type="text" placeholder="ค้นหาลูกค้า..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <input type="text" placeholder="ค้นหาเลขจอง..."
                 value={filterCaseNumber} onChange={(e) => setFilterCaseNumber(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
               <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
           </div>
           <div className="grid grid-cols-5 gap-3 pt-3 border-t border-gray-50">
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานที่</label>
               <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
               </select>
@@ -372,7 +372,7 @@ export default function SpecialExams() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">รายการตรวจ</label>
               <select value={filterExamType} onChange={(e) => setFilterExamType(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 {examTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
@@ -380,17 +380,17 @@ export default function SpecialExams() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">แรงงาน (min)</label>
               <input type="number" value={filterWorkersMin} onChange={(e) => setFilterWorkersMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">แรงงาน (max)</label>
               <input type="number" value={filterWorkersMax} onChange={(e) => setFilterWorkersMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ผูกกับการจอง</label>
               <select value={filterHasBooking} onChange={(e) => setFilterHasBooking(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">ผูกแล้ว</option>
                 <option value="ไม่มี">ไม่ได้ผูก</option>
@@ -399,7 +399,7 @@ export default function SpecialExams() {
           </div>
           <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ <span className="font-semibold text-gray-600">{filtered.length}</span> รายการ</p>
-            <button onClick={clearFilters} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#4338CA] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
@@ -463,7 +463,7 @@ export default function SpecialExams() {
                   onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); setForm({...form, customer_id:'', customer_name_display:'', booking_id:''}) }}
                   onFocus={() => setShowCustomerDropdown(true)}
                   placeholder="พิมพ์ค้นหาลูกค้า..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
                   <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-10 max-h-40 overflow-y-auto mt-1">
                     {filteredCustomers.map(c => (
@@ -489,12 +489,12 @@ export default function SpecialExams() {
                         <IconSearch size={13} className="absolute left-2.5 top-2 text-gray-400"/>
                         <input value={bookingSearch} onChange={(e) => setBookingSearch(e.target.value)}
                           placeholder="ค้นหาเลขจอง..."
-                          className="w-full pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                          className="w-full pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                       </div>
                       <div className="border border-gray-200 rounded-lg overflow-hidden max-h-36 overflow-y-auto">
                         <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
                           onClick={() => setForm({...form, booking_id: ''})}>
-                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${!form.booking_id ? 'border-[#8A5C9E] bg-[#8A5C9E]' : 'border-gray-300'}`}/>
+                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${!form.booking_id ? 'border-[#4338CA] bg-[#4338CA]' : 'border-gray-300'}`}/>
                           <span className="text-xs text-gray-500">ไม่ผูกกับการจอง</span>
                         </div>
                         {filteredBookings.length === 0 ? (
@@ -502,7 +502,7 @@ export default function SpecialExams() {
                         ) : filteredBookings.map(b => (
                           <div key={b.id} onClick={() => handleSelectBooking(b)}
                             className={`flex items-center gap-2 px-3 py-2 border-b border-gray-50 cursor-pointer hover:bg-blue-50 ${form.booking_id === b.id ? 'bg-blue-50' : ''}`}>
-                            <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${form.booking_id === b.id ? 'border-[#8A5C9E] bg-[#8A5C9E]' : 'border-gray-300'}`}/>
+                            <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${form.booking_id === b.id ? 'border-[#4338CA] bg-[#4338CA]' : 'border-gray-300'}`}/>
                             <div>
                               <span className="text-xs font-medium text-gray-700 font-mono">{b.case_number}</span>
                               <span className="text-xs text-gray-400 ml-2">{b.booking_date} · {b.location_name || '-'} · {b.shift}</span>
@@ -519,12 +519,12 @@ export default function SpecialExams() {
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">วันที่ตรวจ *</label>
                   <input type="date" value={form.exam_date} onChange={(e) => setForm({...form, exam_date: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1.5 block">สาขา / คลินิก</label>
                   <select value={form.location_name} onChange={(e) => setForm({...form, location_name: e.target.value})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                     <option value="">เลือกสาขา</option>
                     {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
                   </select>
@@ -536,7 +536,7 @@ export default function SpecialExams() {
                 <input type="text" inputMode="numeric" value={form.total_workers || ''}
                   onChange={(e) => setForm({...form, total_workers: Number(e.target.value.replace(/\D/g,''))})}
                   placeholder="0"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
 
               {/* รายการตรวจ */}
@@ -554,12 +554,12 @@ export default function SpecialExams() {
                       <span className="col-span-2 text-xs text-gray-700 font-medium">{item.exam_name}</span>
                       <input type="text" inputMode="numeric" value={item.price_per_unit}
                         onChange={(e) => updateItemPrice(idx, Number(e.target.value.replace(/\D/g,'')))}
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-[#8A5C9E] w-full"/>
+                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-[#4338CA] w-full"/>
                       <input type="text" inputMode="numeric" value={item.quantity || ''}
                         onChange={(e) => updateItem(idx, Number(e.target.value.replace(/\D/g,'')))}
                         placeholder="0"
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-[#8A5C9E] w-full"/>
-                      <span className={`text-xs font-bold text-right ${item.subtotal > 0 ? 'text-[#8A5C9E]' : 'text-gray-300'}`}>
+                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-[#4338CA] w-full"/>
+                      <span className={`text-xs font-bold text-right ${item.subtotal > 0 ? 'text-[#4338CA]' : 'text-gray-300'}`}>
                         {item.subtotal > 0 ? `฿${item.subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}
                       </span>
                     </div>
@@ -587,14 +587,14 @@ export default function SpecialExams() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">หมายเหตุ</label>
                 <textarea value={form.note} onChange={(e) => setForm({...form, note: e.target.value})} rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
             </div>
 
             <div className="p-6 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
               <button onClick={handleSave} disabled={saving}
-                className="px-5 py-2.5 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] disabled:opacity-50 font-medium transition-colors">
+                className="px-5 py-2.5 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81] disabled:opacity-50 font-medium transition-colors">
                 {saving ? 'กำลังบันทึก...' : `บันทึก (฿${totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})`}
               </button>
             </div>
@@ -618,7 +618,7 @@ export default function SpecialExams() {
                     <span className="text-xs text-gray-400">฿</span>
                     <input type="text" inputMode="numeric" defaultValue={t.price}
                       onBlur={(e) => handleUpdateExamTypePrice(t.id, Number(e.target.value.replace(/\D/g,'')))}
-                      className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                      className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                   </div>
                   <button onClick={() => setDeleteExamTypeId(t.id)} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
                     <IconTrash size={15}/>
@@ -628,7 +628,7 @@ export default function SpecialExams() {
             </div>
             <div className="p-4 border-t border-gray-100 flex justify-end">
               <button onClick={() => { setShowSettingsModal(false); fetchExamTypes() }}
-                className="px-5 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85] font-medium">เสร็จสิ้น</button>
+                className="px-5 py-2 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81] font-medium">เสร็จสิ้น</button>
             </div>
           </div>
         </div>

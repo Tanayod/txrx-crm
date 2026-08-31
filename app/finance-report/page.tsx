@@ -179,10 +179,10 @@ export default function FinanceReport() {
     XLSX.writeFile(wb, `finance_report_${filterDateFrom}_${filterDateTo}.xlsx`)
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1F7]">
+    <div className="flex min-h-screen bg-[#F6F7FB]">
       <Sidebar user={user} role={role} currentPath="/finance-report" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
         <div className="flex justify-between items-center mb-5">
@@ -194,7 +194,7 @@ export default function FinanceReport() {
             <button onClick={exportExcel} className="border border-gray-200 bg-white text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
               <IconDownload size={15}/> Export Excel
             </button>
-            <button onClick={handleSearch} className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] flex items-center gap-2">
+            <button onClick={handleSearch} className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81] flex items-center gap-2">
               <IconRefresh size={15}/> โหลดใหม่
             </button>
           </div>
@@ -256,12 +256,12 @@ export default function FinanceReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
               <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ลูกค้า</label>
@@ -269,13 +269,13 @@ export default function FinanceReport() {
                 <IconSearch size={13} className="absolute left-2.5 top-2 text-gray-400"/>
                 <input value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)}
                   placeholder="ค้นหาลูกค้า..."
-                  className="w-full pl-7 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                  className="w-full pl-7 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานะการชำระ</label>
               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="ชำระครบ">ชำระครบ</option>
                 <option value="ชำระเกิน">ชำระเกิน</option>
@@ -288,7 +288,7 @@ export default function FinanceReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สลิป</label>
               <select value={filterSlip} onChange={(e) => setFilterSlip(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">แนบสลิปแล้ว</option>
                 <option value="ไม่มี">ยังไม่แนบสลิป</option>
@@ -298,7 +298,7 @@ export default function FinanceReport() {
           <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
             <p className="text-xs text-gray-400">{loading ? 'กำลังโหลด...' : `แสดง ${filtered.length} จาก ${rows.length} รายการ`}</p>
             <button onClick={() => { setFilterCustomer(''); setFilterStatus(''); setFilterSlip('') }}
-              className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
+              className="text-xs text-[#4338CA] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 

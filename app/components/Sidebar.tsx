@@ -34,7 +34,7 @@ export default function Sidebar({ user, role, currentPath, onLogout }: {
       {/* Logo */}
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-[#8A5C9E] rounded-lg flex items-center justify-center text-white font-bold text-sm">TX</div>
+          <div className="w-8 h-8 bg-[#4338CA] rounded-lg flex items-center justify-center text-white font-bold text-sm">TX</div>
           <div>
             <p className="text-sm font-semibold text-gray-800">Txrx Service</p>
             <p className="text-xs text-gray-400">ระบบจองตรวจสุขภาพแรงงาน</p>
@@ -50,7 +50,7 @@ export default function Sidebar({ user, role, currentPath, onLogout }: {
             <Link key={item.href} href={item.href}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-lg mb-0.5 text-sm transition-colors ${
                 isActive
-                  ? 'bg-[#8A5C9E] text-white font-medium'
+                  ? 'bg-[#4338CA] text-white font-medium'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}>
               <item.icon size={16} />

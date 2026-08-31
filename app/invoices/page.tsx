@@ -199,10 +199,10 @@ export default function Invoices() {
     return thaiDateStr(d.toISOString())
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1F7]">
+    <div className="flex min-h-screen bg-[#F6F7FB]">
       <Sidebar user={user} role={role} currentPath="/invoices" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
         <div className="flex justify-between items-center mb-6">
@@ -223,18 +223,18 @@ export default function Invoices() {
               <input type="text" placeholder="ค้นหาลูกค้า หรือเลขจอง..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchBookings()}
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]" />
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]" />
             </div>
-            <button onClick={() => fetchBookings()} className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85]">ค้นหา</button>
+            <button onClick={() => fetchBookings()} className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81]">ค้นหา</button>
           </div>
           <div className="flex gap-3 items-end">
             <div><label className="text-xs text-gray-400 mb-1 block">วันที่เริ่ม</label>
-              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/></div>
+              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/></div>
             <div><label className="text-xs text-gray-400 mb-1 block">วันที่สิ้นสุด</label>
-              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/></div>
+              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/></div>
             <div className="flex justify-between items-center flex-1">
               <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-              <button onClick={() => { setSearch(''); setFilterDateFrom((() => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) })()); setFilterDateTo('') }} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
+              <button onClick={() => { setSearch(''); setFilterDateFrom((() => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10) })()); setFilterDateTo('') }} className="text-xs text-[#4338CA] hover:underline">ล้างตัวกรอง</button>
             </div>
           </div>
         </div>
@@ -257,10 +257,10 @@ export default function Invoices() {
                 <span className="text-gray-600 text-xs">{count} คน</span>
                 <span className="text-xs">{paid > 0 ? <span className="text-green-600">฿{fmt(paid)}</span> : <span className="text-gray-300">-</span>}</span>
                 <div className="col-span-2 flex gap-2 justify-center">
-                  <button onClick={() => handleOpenInvoice(b)} className="text-xs bg-[#8A5C9E] text-white px-3 py-1 rounded-lg hover:bg-[#6B4A85]">
+                  <button onClick={() => handleOpenInvoice(b)} className="text-xs bg-[#4338CA] text-white px-3 py-1 rounded-lg hover:bg-[#312E81]">
                     ใบวางบิล
                   </button>
-                  <button onClick={() => handleOpenQuotation(b)} className="text-xs border border-[#8A5C9E] text-[#8A5C9E] px-3 py-1 rounded-lg hover:bg-blue-50 flex items-center gap-1">
+                  <button onClick={() => handleOpenQuotation(b)} className="text-xs border border-[#4338CA] text-[#4338CA] px-3 py-1 rounded-lg hover:bg-blue-50 flex items-center gap-1">
                     <IconFileText size={12}/> ใบเสนอราคา
                   </button>
                 </div>
@@ -277,16 +277,16 @@ export default function Invoices() {
             <div className="p-8 print:p-6">
               <div className="flex justify-between items-start mb-8">
                 <div>
-                  <h1 className="text-3xl font-bold text-[#8A5C9E]">Txrx Service</h1>
+                  <h1 className="text-3xl font-bold text-[#4338CA]">Txrx Service</h1>
                   <p className="text-sm text-gray-500 mt-1">บริการตรวจสุขภาพแรงงานต่างด้าว</p>
                 </div>
                 <div className="text-right">
-                  <span className="bg-[#8A5C9E] text-white text-sm font-bold px-4 py-2 rounded-lg">ใบวางบิล</span>
+                  <span className="bg-[#4338CA] text-white text-sm font-bold px-4 py-2 rounded-lg">ใบวางบิล</span>
                   <p className="text-sm text-gray-600 mt-2">{getInvoiceNo(selected)}</p>
                   <p className="text-sm text-gray-500">{thaiDateStr()}</p>
                 </div>
               </div>
-              <hr className="border-[#8A5C9E] border-2 mb-6"/>
+              <hr className="border-[#4338CA] border-2 mb-6"/>
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div className="bg-blue-50 rounded-xl p-4">
                   <p className="text-xs text-blue-500 font-semibold mb-2">เรียกเก็บจาก</p>
@@ -307,7 +307,7 @@ export default function Invoices() {
                 </div>
               </div>
               <table className="w-full mb-6">
-                <thead><tr className="bg-[#8A5C9E] text-white">
+                <thead><tr className="bg-[#4338CA] text-white">
                   <th className="text-left px-4 py-3 text-sm font-semibold rounded-tl-lg">รายการ</th>
                   <th className="text-right px-4 py-3 text-sm font-semibold">ราคา/คน</th>
                   <th className="text-right px-4 py-3 text-sm font-semibold rounded-tr-lg">รวม</th>
@@ -317,7 +317,7 @@ export default function Invoices() {
                     <td className="px-4 py-4"><p className="font-semibold text-gray-800">ตรวจสุขภาพแรงงานต่างด้าว</p><p className="text-sm text-gray-500">จำนวน {actualCount} คน</p></td>
                     <td className="px-4 py-4 text-right">
                       <input type="text" inputMode="numeric" value={pricePerHead || ''} onChange={(e) => setPricePerHead(Number(e.target.value.replace(/\D/g,'')))} placeholder="0"
-                        className="w-32 text-right border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E] print:border-0 print:p-0"/>
+                        className="w-32 text-right border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA] print:border-0 print:p-0"/>
                     </td>
                     <td className="px-4 py-4 text-right font-semibold text-gray-800">฿{fmt(rawTotal)}</td>
                   </tr>
@@ -358,7 +358,7 @@ export default function Invoices() {
                     <div className="flex justify-between text-sm text-rose-600"><span>หัก ณ ที่จ่าย 3%</span><span>- ฿{fmt(whtAmount)}</span></div>
                   )}
                   <div className="flex justify-between text-sm text-gray-600 border-t border-gray-100 pt-2"><span>ยอดรับชำระแล้ว</span><span className="text-green-600">฿{fmt(paid)}</span></div>
-                  <div className="flex justify-between font-bold text-base border-t-2 border-[#8A5C9E] pt-2"><span>ยอดคงค้าง</span><span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{fmt(remaining)}</span></div>
+                  <div className="flex justify-between font-bold text-base border-t-2 border-[#4338CA] pt-2"><span>ยอดคงค้าง</span><span className={remaining > 0 ? 'text-red-500' : 'text-green-600'}>฿{fmt(remaining)}</span></div>
                 </div>
               </div>
               {/* ช่องทางชำระ */}
@@ -380,10 +380,10 @@ export default function Invoices() {
                 <p className="text-xs text-gray-400">ขอบคุณที่ใช้บริการ Txrx Service</p>
                 <div className="flex gap-2">
                   <button onClick={() => setShowInvoice(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
-                  <button onClick={handleSyncToPayments} disabled={savingVat} className="px-4 py-2 text-sm border border-[#8A5C9E] text-[#8A5C9E] rounded-lg hover:bg-blue-50 disabled:opacity-50">
+                  <button onClick={handleSyncToPayments} disabled={savingVat} className="px-4 py-2 text-sm border border-[#4338CA] text-[#4338CA] rounded-lg hover:bg-blue-50 disabled:opacity-50">
                     {savingVat ? 'กำลังบันทึก...' : 'บันทึกเข้าหน้าการเงิน'}
                   </button>
-                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85]">
+                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81]">
                     <IconPrinter size={15}/> พิมพ์ / PDF
                   </button>
                 </div>
@@ -401,15 +401,15 @@ export default function Invoices() {
               {/* Header */}
               <div className="flex justify-between items-start mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 bg-[#8A5C9E] rounded-xl flex items-center justify-center text-white font-bold text-lg">TX</div>
+                  <div className="w-14 h-14 bg-[#4338CA] rounded-xl flex items-center justify-center text-white font-bold text-lg">TX</div>
                   <div>
                     <p className="text-xs text-gray-400">EST.2024</p>
-                    <p className="font-bold text-[#8A5C9E]">TXRX</p>
+                    <p className="font-bold text-[#4338CA]">TXRX</p>
                     <p className="text-xs text-gray-500">Service</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <h1 className="text-4xl font-bold text-[#8A5C9E] mb-2">ใบเสนอราคา</h1>
+                  <h1 className="text-4xl font-bold text-[#4338CA] mb-2">ใบเสนอราคา</h1>
                   <p className="text-xs text-gray-400">(ต้นฉบับ)</p>
                 </div>
               </div>
@@ -439,7 +439,7 @@ export default function Invoices() {
                   <div>
                     <p className="text-xs font-semibold text-gray-600 mb-1">ลูกค้า :</p>
                     <input value={printName} onChange={(e) => setPrintName(e.target.value)}
-                      className="text-sm font-bold text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-[#8A5C9E] print:border-0 print:bg-transparent"/>
+                      className="text-sm font-bold text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-[#4338CA] print:border-0 print:bg-transparent"/>
                     <p className="text-xs text-gray-400 print:hidden mt-1">(ชื่อในระบบ: {selected?.customers?.customer_name})</p>
                   </div>
                   <div>
@@ -457,7 +457,7 @@ export default function Invoices() {
 
               {/* ตารางรายการ */}
               <table className="w-full mb-6 border-collapse">
-                <thead><tr className="bg-[#8A5C9E] text-white text-sm">
+                <thead><tr className="bg-[#4338CA] text-white text-sm">
                   <th className="text-left px-4 py-3 rounded-tl-lg">คำอธิบาย</th>
                   <th className="text-right px-4 py-3">จำนวน</th>
                   <th className="text-right px-4 py-3">ราคา</th>
@@ -474,7 +474,7 @@ export default function Invoices() {
                     <td className="px-4 py-4 text-right text-sm">{actualCount}.00</td>
                     <td className="px-4 py-4 text-right">
                       <input type="text" inputMode="numeric" value={pricePerHead || ''} onChange={(e) => setPricePerHead(Number(e.target.value.replace(/\D/g,'')))} placeholder="0"
-                        className="w-28 text-right border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#8A5C9E] print:border-0"/>
+                        className="w-28 text-right border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#4338CA] print:border-0"/>
                     </td>
                     <td className="px-4 py-4 text-right text-sm text-gray-500">0.00</td>
                     <td className="px-4 py-4 text-right text-sm">
@@ -514,7 +514,7 @@ export default function Invoices() {
                   </div>
                 </div>
                 <div className="w-80">
-                  <div className="flex justify-between mb-1"><span className="text-sm font-bold text-gray-700">จำนวนเงินทั้งสิ้น</span><span className="text-lg font-bold text-[#8A5C9E]">{fmt(total)} บาท</span></div>
+                  <div className="flex justify-between mb-1"><span className="text-sm font-bold text-gray-700">จำนวนเงินทั้งสิ้น</span><span className="text-lg font-bold text-[#4338CA]">{fmt(total)} บาท</span></div>
                   <div className="flex justify-between text-sm text-gray-600 mb-1"><span>จำนวนเงินที่ถูกหัก ณ ที่จ่าย</span><span>{fmt(whtAmount)} บาท</span></div>
                   <div className="flex justify-between text-sm font-semibold text-gray-700 border-t border-gray-200 pt-1"><span>จำนวนเงินที่ชำระ</span><span>{fmt(Math.round((total - whtAmount) * 100) / 100)} บาท</span></div>
                 </div>
@@ -527,7 +527,7 @@ export default function Invoices() {
                   <div className="grid grid-cols-2 gap-3">
                     {bankAccounts.map(ba => (
                       <div key={ba.id} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-3">
-                        <div className="w-8 h-8 bg-[#8A5C9E] rounded-lg flex items-center justify-center text-white text-xs font-bold">{ba.bank_name.slice(0,2)}</div>
+                        <div className="w-8 h-8 bg-[#4338CA] rounded-lg flex items-center justify-center text-white text-xs font-bold">{ba.bank_name.slice(0,2)}</div>
                         <div>
                           <p className="text-xs font-semibold text-gray-700">{ba.bank_name}</p>
                           <p className="text-sm font-mono text-gray-800">{ba.account_number}</p>
@@ -561,10 +561,10 @@ export default function Invoices() {
                 <p className="text-xs text-gray-400">หมายเหตุ: -</p>
                 <div className="flex gap-2">
                   <button onClick={() => setShowQuotation(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ปิด</button>
-                  <button onClick={handleSyncToPayments} disabled={savingVat} className="px-4 py-2 text-sm border border-[#8A5C9E] text-[#8A5C9E] rounded-lg hover:bg-blue-50 disabled:opacity-50">
+                  <button onClick={handleSyncToPayments} disabled={savingVat} className="px-4 py-2 text-sm border border-[#4338CA] text-[#4338CA] rounded-lg hover:bg-blue-50 disabled:opacity-50">
                     {savingVat ? 'กำลังบันทึก...' : 'บันทึกเข้าหน้าการเงิน'}
                   </button>
-                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85]">
+                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81]">
                     <IconPrinter size={15}/> พิมพ์ / PDF
                   </button>
                 </div>
@@ -595,17 +595,17 @@ export default function Invoices() {
                   <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
                   {f.textarea ? (
                     <textarea value={(editCompany as any)[f.key]} onChange={(e) => setEditCompany({...editCompany, [f.key]: e.target.value})} rows={2}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E] resize-none"/>
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA] resize-none"/>
                   ) : (
                     <input value={(editCompany as any)[f.key]} onChange={(e) => setEditCompany({...editCompany, [f.key]: e.target.value})}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                   )}
                 </div>
               ))}
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-2">
               <button onClick={() => setShowCompanySettings(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg">ยกเลิก</button>
-              <button onClick={handleSaveCompany} className="px-4 py-2 text-sm bg-[#8A5C9E] text-white rounded-lg hover:bg-[#6B4A85]">บันทึก</button>
+              <button onClick={handleSaveCompany} className="px-4 py-2 text-sm bg-[#4338CA] text-white rounded-lg hover:bg-[#312E81]">บันทึก</button>
             </div>
           </div>
         </div>

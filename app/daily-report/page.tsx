@@ -130,10 +130,10 @@ export default function DailyReport() {
     setFilterActualMin(''); setFilterActualMax(''); setFilterHasActual('')
   }
 
-  if (!ready) return <div className="min-h-screen bg-[#F5F1F7] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
+  if (!ready) return <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center text-sm text-gray-400">กำลังโหลด...</div>
 
   return (
-    <div className="flex min-h-screen bg-[#F5F1F7]">
+    <div className="flex min-h-screen bg-[#F6F7FB]">
       <Sidebar user={user} role={role} currentPath="/daily-report" onLogout={logout} />
       <div className="flex-1 ml-56 p-6">
 
@@ -153,16 +153,16 @@ export default function DailyReport() {
             <div>
               <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่ม</label>
               <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <span className="text-gray-400 text-sm pb-2">ถึง</span>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">วันที่สิ้นสุด</label>
               <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <button onClick={fetchReport}
-              className="bg-[#8A5C9E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#6B4A85] flex items-center gap-2 transition-colors">
+              className="bg-[#4338CA] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#312E81] flex items-center gap-2 transition-colors">
               <IconRefresh size={14}/> ดึงข้อมูล
             </button>
             <div className="flex gap-2 ml-auto">
@@ -181,12 +181,12 @@ export default function DailyReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ชื่อลูกค้า</label>
               <input type="text" placeholder="ค้นหา..." value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">กะ</label>
               <select value={filterShift} onChange={(e) => setFilterShift(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option>เช้า</option><option>บ่าย</option><option>เย็น</option>
               </select>
@@ -194,7 +194,7 @@ export default function DailyReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Type</label>
               <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 {availableTypes.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -202,7 +202,7 @@ export default function DailyReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">สถานที่</label>
               <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
               </select>
@@ -212,17 +212,17 @@ export default function DailyReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (min)</label>
               <input type="number" value={filterBookedMin} onChange={(e) => setFilterBookedMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนจอง (max)</label>
               <input type="number" value={filterBookedMax} onChange={(e) => setFilterBookedMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">จำนวนตรวจจริง</label>
               <select value={filterHasActual} onChange={(e) => setFilterHasActual(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]">
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]">
                 <option value="">ทั้งหมด</option>
                 <option value="มี">มีแล้ว</option>
                 <option value="ไม่มี">ยังไม่มี</option>
@@ -231,17 +231,17 @@ export default function DailyReport() {
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (min)</label>
               <input type="number" value={filterActualMin} onChange={(e) => setFilterActualMin(e.target.value)}
-                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">ตรวจจริง (max)</label>
               <input type="number" value={filterActualMax} onChange={(e) => setFilterActualMax(e.target.value)}
-                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A5C9E]"/>
+                placeholder="9999" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
             </div>
           </div>
           <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
             <p className="text-xs text-gray-400">พบ {filtered.length} รายการ</p>
-            <button onClick={clearFilters} className="text-xs text-[#8A5C9E] hover:underline">ล้างตัวกรอง</button>
+            <button onClick={clearFilters} className="text-xs text-[#4338CA] hover:underline">ล้างตัวกรอง</button>
           </div>
         </div>
 
@@ -249,7 +249,7 @@ export default function DailyReport() {
         <div className="grid grid-cols-8 gap-3 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
             <p className="text-xs text-gray-400 font-medium mb-1 flex items-center gap-1"><IconCalendar size={11}/>ยอดจองวันนี้</p>
-            <p className="text-xl font-bold text-[#8A5C9E]">{summary.todayBooked.toLocaleString()}</p>
+            <p className="text-xl font-bold text-[#4338CA]">{summary.todayBooked.toLocaleString()}</p>
             <p className="text-[10px] text-gray-400 mt-0.5">คน</p>
           </div>
           <div className="bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm">
@@ -315,10 +315,10 @@ export default function DailyReport() {
               <div key={date}>
                 <div className={`px-5 py-2.5 flex justify-between items-center border-b border-gray-100 ${isToday ? 'bg-blue-50' : isTomorrow ? 'bg-amber-50' : 'bg-gray-50/50'}`}>
                   <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold ${isToday ? 'text-[#8A5C9E]' : isTomorrow ? 'text-amber-600' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-bold ${isToday ? 'text-[#4338CA]' : isTomorrow ? 'text-amber-600' : 'text-gray-700'}`}>
                       {new Date(date).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </span>
-                    {isToday && <span className="text-xs bg-[#8A5C9E] text-white px-2 py-0.5 rounded-full">วันนี้</span>}
+                    {isToday && <span className="text-xs bg-[#4338CA] text-white px-2 py-0.5 rounded-full">วันนี้</span>}
                     {isTomorrow && <span className="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">พรุ่งนี้</span>}
                   </div>
                   <div className="flex items-center gap-4">
