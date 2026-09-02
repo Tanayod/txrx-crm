@@ -15,7 +15,7 @@ export default function Medical() {
   const [showModal, setShowModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [certificates, setCertificates] = useState<any[]>([])
-  const [form, setForm] = useState({ actual_count: 0, cert_count: 0, doctor_note: '', exam_date: '', parcel_sent: false })
+  const [form, setForm] = useState({ actual_count: 0, cert_count: 0, hold_count: 0, doctor_note: '', exam_date: '', parcel_sent: false })
   const [loaded, setLoaded] = useState(false)
 
   const [linkUrl, setLinkUrl] = useState('')
@@ -62,7 +62,7 @@ export default function Medical() {
   const handleOpenModal = async (booking: any) => {
     setSelected(booking)
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
-    setForm({ actual_count: mc?.actual_count || 0, cert_count: mc?.cert_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date, parcel_sent: mc?.parcel_sent || false })
+    setForm({ actual_count: mc?.actual_count || 0, cert_count: mc?.cert_count || 0, hold_count: mc?.hold_count || 0, doctor_note: mc?.doctor_note || '', exam_date: mc?.exam_date || booking.booking_date, parcel_sent: mc?.parcel_sent || false })
     if (mc?.id) await fetchCertificates(mc.id)
     else setCertificates([])
     setLinkUrl(''); setLinkName('')
@@ -78,10 +78,13 @@ export default function Medical() {
     deadline.setDate(deadline.getDate() + allowedDays)
     const deadlineStr = deadline.toISOString().slice(0, 10)
 
+    const holdN = Math.max(0, Math.min(Number(form.hold_count) || 0, form.actual_count))
     if (mc?.id) {
-      await supabase.from('medical_cases').update({ actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, parcel_sent: form.parcel_sent }).eq('id', mc.id)
+      const { error } = await supabase.from('medical_cases').update({ actual_count: form.actual_count, cert_count: form.cert_count, hold_count: holdN, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, parcel_sent: form.parcel_sent }).eq('id', mc.id)
+      if (error) { alert(`บันทึกไม่สำเร็จ: ${error.message}\n\nถ้าขึ้นว่าไม่มีคอลัมน์ hold_count ให้รัน SQL เพิ่มคอลัมน์ใน Supabase ก่อน`); return }
     } else {
-      await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, cert_count: form.cert_count, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง', parcel_sent: form.parcel_sent }])
+      const { error } = await supabase.from('medical_cases').insert([{ booking_id: selected.id, actual_count: form.actual_count, cert_count: form.cert_count, hold_count: holdN, doctor_note: form.doctor_note, exam_date: form.exam_date, cert_deadline: deadlineStr, cert_status: 'รอส่ง', parcel_sent: form.parcel_sent }])
+      if (error) { alert(`บันทึกไม่สำเร็จ: ${error.message}\n\nถ้าขึ้นว่าไม่มีคอลัมน์ hold_count ให้รัน SQL เพิ่มคอลัมน์ใน Supabase ก่อน`); return }
     }
     fetchCases(); setShowModal(false)
   }
@@ -155,30 +158,49 @@ export default function Medical() {
     if (mc?.id) fetchCertificates(mc.id)
   }
 
-  // 🔹 ปรับระบบคำนวณสถานะใบแพทย์ รองรับเคสตรวจพิเศษ 14 วัน
+  // จำนวนใบแพทย์ที่ลูกค้าขอ Hold (รองรับ record เก่าที่ใช้ cert_status='Hold')
+  const heldOf = (mc: any) => {
+    if (!mc) return 0
+    const n = Number(mc.hold_count) || 0
+    if (n > 0) return n
+    if (mc.cert_status === 'Hold') return Math.max((mc.actual_count || 0) - (mc.cert_count || 0), 0) // legacy
+    return 0
+  }
+  // ค้างส่งจริง = ตรวจจริง − ส่งแล้ว − Hold
+  const pendingRealOf = (mc: any) =>
+    mc ? Math.max((mc.actual_count || 0) - (mc.cert_count || 0) - heldOf(mc), 0) : 0
+
+  // 🔹 ปรับระบบคำนวณสถานะใบแพทย์ รองรับเคสตรวจพิเศษ 14 วัน + Hold บางส่วน
   const getCertStatus = (booking: any) => {
     const mc = Array.isArray(booking.medical_cases) ? booking.medical_cases?.[0] : booking.medical_cases
     const hasSpecialExam = (booking.special_exams && booking.special_exams.length > 0)
-    
-    if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-500', icon: IconClock }
-    if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck }
-    // ลูกค้าขอ Hold เอง — ไม่ต้องเตือน "เกินกำหนด" (ต้องเช็คก่อนคำนวณวัน)
-    if (mc.cert_status === 'Hold') return { label: 'Hold (ลูกค้าขอ)', color: 'bg-slate-100 text-slate-600', icon: IconClock }
-    if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-50 text-sky-600', icon: IconClock }
-    
+    const held = heldOf(mc)
+
+    if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-500', icon: IconClock, held: 0 }
+    if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck, held }
+    if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-50 text-sky-600', icon: IconClock, held }
+
+    const pendingReal = pendingRealOf(mc)
+    // ส่ง+Hold ครบแล้ว (ไม่มีค้างจริง) — ไม่ต้องเตือนเกินกำหนด
+    if ((mc.actual_count || 0) > 0 && pendingReal === 0) {
+      return held > 0
+        ? { label: `ส่งครบ (Hold ${held})`, color: 'bg-slate-100 text-slate-600', icon: IconCheck, held }
+        : { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck, held }
+    }
+
     const today = new Date()
     const examDate = new Date(mc.exam_date || booking.booking_date)
     const daysDiff = Math.floor((today.getTime() - examDate.getTime()) / 86400000)
 
     if (hasSpecialExam && daysDiff <= 14) {
-      return { label: 'รอผล Lab (7-14 วัน)', color: 'bg-purple-50 text-purple-700', icon: IconClock }
+      return { label: 'รอผล Lab (7-14 วัน)', color: 'bg-purple-50 text-purple-700', icon: IconClock, held }
     }
 
     const allowedDays = hasSpecialExam ? 14 : 3
     if (daysDiff > allowedDays) {
-      return { label: `เกิน ${allowedDays} วัน!`, color: 'bg-red-50 text-red-600', icon: IconAlertTriangle }
+      return { label: `เกิน ${allowedDays} วัน!`, color: 'bg-red-50 text-red-600', icon: IconAlertTriangle, held }
     }
-    return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock }
+    return { label: 'รอส่งใบแพทย์', color: 'bg-amber-50 text-amber-600', icon: IconClock, held }
   }
 
   const handleQuickCertStatus = async (b: any, newStatus: string) => {
@@ -202,9 +224,7 @@ export default function Medical() {
       err = res.error; rows = res.data
     }
     if (err) {
-      alert(`เปลี่ยนสถานะไม่สำเร็จ (${err.code || 'error'}): ${err.message || err}` +
-        (err.details ? `\n${err.details}` : '') +
-        `\n\nถ้าเป็นค่า "Hold" แล้วขึ้น constraint/violates check → ต้องเพิ่มค่า Hold ใน CHECK ของคอลัมน์ cert_status ใน Supabase ก่อน`)
+      alert(`เปลี่ยนสถานะไม่สำเร็จ (${err.code || 'error'}): ${err.message || err}` + (err.details ? `\n${err.details}` : ''))
       return
     }
     if (!rows || rows.length === 0) {
@@ -221,7 +241,8 @@ export default function Medical() {
     if (search && !b.customers?.customer_name?.includes(search) && !b.case_number?.includes(search)) return false
     if (filterDateFrom && date < filterDateFrom) return false
     if (filterDateTo && date > filterDateTo) return false
-    if (filterStatus && status.label !== filterStatus) return false
+    if (filterStatus === 'มี Hold') { if (heldOf(mc) <= 0) return false }
+    else if (filterStatus && status.label !== filterStatus) return false
     if (filterBookedMin && b.booked_count < Number(filterBookedMin)) return false
     if (filterBookedMax && b.booked_count > Number(filterBookedMax)) return false
     if (filterActualMin && (mc?.actual_count ?? -1) < Number(filterActualMin)) return false
@@ -313,8 +334,8 @@ export default function Medical() {
                 <option>รอผล Lab (7-14 วัน)</option>
                 <option>เกิน 3 วัน!</option>
                 <option>เกิน 14 วัน!</option>
-                <option>Hold (ลูกค้าขอ)</option>
                 <option>ส่งครบแล้ว</option>
+                <option>มี Hold</option>
               </select>
             </div>
           </div>
@@ -426,9 +447,11 @@ export default function Medical() {
                       <option value="รอบันทึก">รอบันทึก</option>
                       <option value="รอข้อมูลแรงงาน">รอข้อมูลแรงงาน</option>
                       <option value="รอส่ง">รอส่งใบแพทย์</option>
-                      <option value="Hold">Hold (ลูกค้าขอ)</option>
                       <option value="เรียบร้อย">ส่งครบแล้ว</option>
                     </select>
+                    {status.held > 0 && (
+                      <span className="text-[11px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium" title="ลูกค้าขอ Hold ใบแพทย์">Hold {status.held}</span>
+                    )}
                     {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
                   </span>
                   <button onClick={() => handleOpenModal(b)} className="text-xs text-[#4338CA] hover:underline text-right font-medium">บันทึก / แนบไฟล์</button>
@@ -471,6 +494,17 @@ export default function Medical() {
                     คัดลอกจากตรวจจริง
                   </button>
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">จำนวน Hold (ลูกค้าขอพักใบแพทย์)</label>
+                <input type="text" inputMode="numeric" value={form.hold_count || ''}
+                  onChange={(e) => setForm({...form, hold_count: Number(e.target.value.replace(/\D/g,''))})}
+                  placeholder="0"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]" />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  ค้างส่งจริง = ตรวจ {form.actual_count || 0} − ส่งแล้ว {form.cert_count || 0} − Hold {Math.min(form.hold_count || 0, form.actual_count || 0)} =
+                  <b className="text-gray-600"> {Math.max((form.actual_count||0) - (form.cert_count||0) - Math.min(form.hold_count||0, form.actual_count||0), 0)}</b> คน
+                </p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>

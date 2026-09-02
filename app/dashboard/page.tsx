@@ -99,6 +99,7 @@ export default function Dashboard() {
   const [prevServiceBreakdown, setPrevServiceBreakdown] = useState<any[]>([])
   const [topCustomers, setTopCustomers] = useState<any[]>([])
   const [agingCerts, setAgingCerts] = useState<any[]>([])
+  const [holdCerts, setHoldCerts] = useState<any[]>([])
   const [inactiveCustomers, setInactiveCustomers] = useState<{ mou: any[], renew: any[] }>({ mou: [], renew: [] })
   const [debtByService, setDebtByService] = useState<any[]>([])
   const [totalDebt, setTotalDebt] = useState(0)
@@ -302,7 +303,7 @@ export default function Dashboard() {
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(id, actual_count, cert_count, cert_status, exam_date), special_exams(id)')
+        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(id, actual_count, cert_count, hold_count, cert_status, exam_date), special_exams(id)')
         .gte('booking_date', '2026-01-01')
         .lte('booking_date', todayStr)
         .range(agingFrom, agingFrom + 999)
@@ -314,20 +315,28 @@ export default function Dashboard() {
 
     // 🔹 คำนวณรายการ "ค้างส่ง" ทั้งหมด (ไม่กรองวันที่) แล้วค่อยติดป้าย isOverdue แยกไว้
     //    เพื่อให้เอาไปแยกแสดงได้ทั้ง 2 แบบ: "เกินกำหนดจริง" และ "รอส่งทั้งหมด" (รวมที่ยังไม่เกินกำหนด)
+    // จำนวน Hold (รองรับ record เก่าที่ใช้ cert_status='Hold')
+    const heldOf = (mc: any) => {
+      if (!mc) return 0
+      const n = Number(mc.hold_count) || 0
+      if (n > 0) return n
+      if (mc.cert_status === 'Hold') return Math.max((mc.actual_count || 0) - (mc.cert_count || 0), 0)
+      return 0
+    }
+
     const agingList = (allYearMedical || [])
       .map(b => {
         const mc = getMc(b)
         const actual = mc?.actual_count || 0
         const certSent = mc?.cert_count || 0
-        // ✅ ถ้ายังไม่เคยบันทึก "จำนวนตรวจจริง" เลย (actual_count ยังเป็น 0/ว่าง)
-        // ไม่ควรฟันธงว่ามีเคสค้างส่ง เพราะยังไม่มีข้อมูลให้เทียบ
-        const pending = actual > 0 ? Math.max(actual - certSent, 0) : 0
+        const held = heldOf(mc)
+        // ค้างส่งจริง = ตรวจจริง − ส่งแล้ว − Hold  (ยังไม่บันทึกตรวจจริง = 0)
+        const pending = actual > 0 ? Math.max(actual - certSent - held, 0) : 0
 
         // ✅ ใช้ exam_date (วันที่ตรวจจริง) เป็นตัวตั้งในการนับวัน ให้ตรงกับ logic ของหน้า /medical
         const refDate = mc?.exam_date || b.booking_date
         const daysOver = Math.floor((today.getTime() - new Date(refDate).getTime()) / 86400000)
 
-        // เช็คตรวจพิเศษเพื่อขยายเวลาเป็น 14 วัน
         const hasSpecialExam = (b.special_exams && b.special_exams.length > 0)
         const allowedDays = hasSpecialExam ? 14 : 3
         const isOverdue = daysOver > allowedDays && pending > 0
@@ -335,34 +344,40 @@ export default function Dashboard() {
         return {
           case_number: b.case_number,
           customer_name: (b.customers as any)?.customer_name,
-          booking_date: refDate, // แสดงวันที่ตรวจจริงในการ์ด ให้ตรงกับตัวที่ใช้คำนวณ
+          booking_date: refDate,
           pending,
+          held,
           daysOver,
           hasSpecialExam,
           isOverdue,
           cert_status: mc?.cert_status || 'รอบันทึก'
         }
       })
-      // เอาเฉพาะเคสที่ยังส่งใบแพทย์ไม่ครบจริงๆ (ไม่สนใจว่าจะเกินกำหนดหรือยัง) และไม่ใช่สถานะพิเศษ
-      // 🔹 กัน Hold ออก — ลูกค้าขอพักเอง ไม่นับเป็น "ค้างส่ง" ที่ต้องตาม
-      .filter(b => b.pending > 0 && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน' && b.cert_status !== 'Hold')
-      // เรียงให้เคสที่เกินกำหนดขึ้นก่อน แล้วค่อยเรียงตามจำนวนวันที่ค้างมากไปน้อย
+      // เอาเฉพาะเคสที่ยัง "ค้างส่งจริง" (Hold ไม่นับ เพราะหักออกจาก pending แล้ว)
+      .filter(b => b.pending > 0 && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน')
       .sort((a, b) => (Number(b.isOverdue) - Number(a.isOverdue)) || (b.daysOver - a.daysOver))
 
-    // 🔹 นับ 2 ยอดแยกกัน: "เกินกำหนดจริง" (ต้องรีบส่ง) กับ "รอส่งทั้งหมด" (รวมเคสที่ยังไม่เกินกำหนด)
     const overdueOnly = agingList.filter(b => b.isOverdue)
     const totalOverdueCerts = overdueOnly.reduce((s, b) => s + b.pending, 0)
     const totalAllPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 8))
 
-    // 🔹 เคสที่ลูกค้าขอ Hold เอง (ยังส่งใบไม่ครบ) — โชว์แยกเป็น chip บน Dashboard (นับเป็นจำนวนแรงงาน)
-    let holdWorkers = 0, holdCaseCount = 0
-    for (const b of (allYearMedical || [])) {
-      const mc = getMc(b)
-      const actual = mc?.actual_count || 0
-      const pending = actual > 0 ? Math.max(actual - (mc?.cert_count || 0), 0) : 0
-      if (mc?.cert_status === 'Hold' && pending > 0) { holdWorkers += pending; holdCaseCount++ }
-    }
+    // 🔹 รายการ Hold (ลูกค้าขอพักใบแพทย์) — นับเป็นจำนวนแรงงาน + list แยกบนการ์ด
+    const holdRows = (allYearMedical || [])
+      .map(b => {
+        const mc = getMc(b)
+        return {
+          customer_name: (b.customers as any)?.customer_name,
+          case_number: b.case_number,
+          booking_date: mc?.exam_date || b.booking_date,
+          held: heldOf(mc),
+        }
+      })
+      .filter(r => r.held > 0)
+      .sort((a, b) => b.held - a.held)
+    const holdWorkers = holdRows.reduce((s, r) => s + r.held, 0)
+    const holdCaseCount = holdRows.length
+    setHoldCerts(holdRows.slice(0, 5))
 
     // ยอดหนี้ค้างชำระ
     let allDebtBookings: any[] = []
@@ -804,7 +819,7 @@ export default function Dashboard() {
               <span className="text-[11px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">เกิน {kpi.overdueCerts.toLocaleString()}</span>
               <span className="text-[11px] bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded-full tabular-nums">รวม {kpi.allPendingCerts.toLocaleString()}</span>
               {kpi.holdCerts > 0 && (
-                <span className="text-[11px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">Hold {kpi.holdCerts.toLocaleString()} คน ({kpi.holdCaseCount} เคส)</span>
+                <span className="text-[11px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">Hold {kpi.holdCerts.toLocaleString()} คน</span>
               )}
             </div>
           } />
@@ -838,6 +853,27 @@ export default function Dashboard() {
             <button onClick={() => window.location.href='/medical'} className="w-full text-[11px] flex items-center justify-center gap-1 pt-1.5 text-slate-400 hover:text-indigo-600 transition-colors">
               ดูทั้งหมด <IconChevronRight size={12}/>
             </button>
+          )}
+
+          {/* 🔹 โซน Hold — ลูกค้าขอพักใบแพทย์เอง (ไม่นับเป็นค้างส่ง) */}
+          {holdCerts.length > 0 && (
+            <div className="mt-3 pt-2.5 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-semibold text-slate-500">⏸️ Hold — ลูกค้าขอพักใบแพทย์</p>
+                <span className="text-[11px] font-bold text-slate-600 tabular-nums">{kpi.holdCerts.toLocaleString()} คน · {kpi.holdCaseCount} เคส</span>
+              </div>
+              <div className="space-y-1">
+                {holdCerts.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-medium truncate" style={{ color: P.body }}>{c.customer_name}</p>
+                      <p className="text-[11px]" style={{ color: P.faint }}>{c.case_number} · {c.booking_date}</p>
+                    </div>
+                    <p className="text-[12px] font-bold tabular-nums text-slate-600 flex-shrink-0 ml-2">Hold {c.held}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>
