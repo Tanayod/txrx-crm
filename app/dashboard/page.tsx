@@ -84,7 +84,7 @@ export default function Dashboard() {
     utilization: 0,
     activeCustomers: 0, totalCustomers: 0,
     repeatRate: 0, repeatCount: 0,
-    pendingPayments: 0, overdueCerts: 0, allPendingCerts: 0, holdCerts: 0,
+    pendingPayments: 0, overdueCerts: 0, allPendingCerts: 0, holdCerts: 0, holdCaseCount: 0,
     revenue: 0, prevRevenue: 0,
     rangeTotal: 0, prevRangeTotal: 0,
     // 🔹 4 เสาหลักเพิ่มเติม
@@ -355,13 +355,14 @@ export default function Dashboard() {
     const totalAllPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 8))
 
-    // 🔹 เคสที่ลูกค้าขอ Hold เอง (ยังส่งใบไม่ครบ) — โชว์แยกเป็น chip บน Dashboard
-    const holdCount = (allYearMedical || []).filter(b => {
+    // 🔹 เคสที่ลูกค้าขอ Hold เอง (ยังส่งใบไม่ครบ) — โชว์แยกเป็น chip บน Dashboard (นับเป็นจำนวนแรงงาน)
+    let holdWorkers = 0, holdCaseCount = 0
+    for (const b of (allYearMedical || [])) {
       const mc = getMc(b)
       const actual = mc?.actual_count || 0
       const pending = actual > 0 ? Math.max(actual - (mc?.cert_count || 0), 0) : 0
-      return mc?.cert_status === 'Hold' && pending > 0
-    }).length
+      if (mc?.cert_status === 'Hold' && pending > 0) { holdWorkers += pending; holdCaseCount++ }
+    }
 
     // ยอดหนี้ค้างชำระ
     let allDebtBookings: any[] = []
@@ -512,7 +513,8 @@ export default function Dashboard() {
       pendingPayments: pendingData?.length || 0,
       overdueCerts: totalOverdueCerts,
       allPendingCerts: totalAllPendingCerts,
-      holdCerts: holdCount,
+      holdCerts: holdWorkers,
+      holdCaseCount,
       revenue, prevRevenue,
       rangeTotal, prevRangeTotal,
       rangeBooked: totalBooked, prevRangeBooked,
@@ -802,7 +804,7 @@ export default function Dashboard() {
               <span className="text-[11px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">เกิน {kpi.overdueCerts.toLocaleString()}</span>
               <span className="text-[11px] bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded-full tabular-nums">รวม {kpi.allPendingCerts.toLocaleString()}</span>
               {kpi.holdCerts > 0 && (
-                <span className="text-[11px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">Hold {kpi.holdCerts.toLocaleString()} เคส</span>
+                <span className="text-[11px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">Hold {kpi.holdCerts.toLocaleString()} คน ({kpi.holdCaseCount} เคส)</span>
               )}
             </div>
           } />
