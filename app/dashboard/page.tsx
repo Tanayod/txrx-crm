@@ -84,7 +84,7 @@ export default function Dashboard() {
     utilization: 0,
     activeCustomers: 0, totalCustomers: 0,
     repeatRate: 0, repeatCount: 0,
-    pendingPayments: 0, overdueCerts: 0, allPendingCerts: 0,
+    pendingPayments: 0, overdueCerts: 0, allPendingCerts: 0, holdCerts: 0,
     revenue: 0, prevRevenue: 0,
     rangeTotal: 0, prevRangeTotal: 0,
     // 🔹 4 เสาหลักเพิ่มเติม
@@ -344,7 +344,8 @@ export default function Dashboard() {
         }
       })
       // เอาเฉพาะเคสที่ยังส่งใบแพทย์ไม่ครบจริงๆ (ไม่สนใจว่าจะเกินกำหนดหรือยัง) และไม่ใช่สถานะพิเศษ
-      .filter(b => b.pending > 0 && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน')
+      // 🔹 กัน Hold ออก — ลูกค้าขอพักเอง ไม่นับเป็น "ค้างส่ง" ที่ต้องตาม
+      .filter(b => b.pending > 0 && b.cert_status !== 'เรียบร้อย' && b.cert_status !== 'รอข้อมูลแรงงาน' && b.cert_status !== 'Hold')
       // เรียงให้เคสที่เกินกำหนดขึ้นก่อน แล้วค่อยเรียงตามจำนวนวันที่ค้างมากไปน้อย
       .sort((a, b) => (Number(b.isOverdue) - Number(a.isOverdue)) || (b.daysOver - a.daysOver))
 
@@ -353,6 +354,14 @@ export default function Dashboard() {
     const totalOverdueCerts = overdueOnly.reduce((s, b) => s + b.pending, 0)
     const totalAllPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 8))
+
+    // 🔹 เคสที่ลูกค้าขอ Hold เอง (ยังส่งใบไม่ครบ) — โชว์แยกเป็น chip บน Dashboard
+    const holdCount = (allYearMedical || []).filter(b => {
+      const mc = getMc(b)
+      const actual = mc?.actual_count || 0
+      const pending = actual > 0 ? Math.max(actual - (mc?.cert_count || 0), 0) : 0
+      return mc?.cert_status === 'Hold' && pending > 0
+    }).length
 
     // ยอดหนี้ค้างชำระ
     let allDebtBookings: any[] = []
@@ -503,6 +512,7 @@ export default function Dashboard() {
       pendingPayments: pendingData?.length || 0,
       overdueCerts: totalOverdueCerts,
       allPendingCerts: totalAllPendingCerts,
+      holdCerts: holdCount,
       revenue, prevRevenue,
       rangeTotal, prevRangeTotal,
       rangeBooked: totalBooked, prevRangeBooked,
@@ -791,6 +801,9 @@ export default function Dashboard() {
             <div className="flex flex-col items-end gap-1">
               <span className="text-[11px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">เกิน {kpi.overdueCerts.toLocaleString()}</span>
               <span className="text-[11px] bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded-full tabular-nums">รวม {kpi.allPendingCerts.toLocaleString()}</span>
+              {kpi.holdCerts > 0 && (
+                <span className="text-[11px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">Hold {kpi.holdCerts.toLocaleString()} เคส</span>
+              )}
             </div>
           } />
         <div className="space-y-2">

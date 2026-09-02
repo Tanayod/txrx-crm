@@ -162,6 +162,8 @@ export default function Medical() {
     
     if (!mc) return { label: 'รอบันทึก', color: 'bg-gray-100 text-gray-500', icon: IconClock }
     if (mc.cert_status === 'เรียบร้อย') return { label: 'ส่งครบแล้ว', color: 'bg-green-50 text-green-600', icon: IconCheck }
+    // ลูกค้าขอ Hold เอง — ไม่ต้องเตือน "เกินกำหนด" (ต้องเช็คก่อนคำนวณวัน)
+    if (mc.cert_status === 'Hold') return { label: 'Hold (ลูกค้าขอ)', color: 'bg-slate-100 text-slate-600', icon: IconClock }
     if (mc.cert_status === 'รอข้อมูลแรงงาน') return { label: 'รอข้อมูลแรงงาน', color: 'bg-sky-50 text-sky-600', icon: IconClock }
     
     const today = new Date()
@@ -184,16 +186,30 @@ export default function Medical() {
     const hasSpecialExam = (b.special_exams && b.special_exams.length > 0)
     const allowedDays = hasSpecialExam ? 14 : 3
 
+    let err: any = null
+    let rows: any[] | null = null
     if (mc?.id) {
-      await supabase.from('medical_cases').update({ cert_status: newStatus }).eq('id', mc.id)
+      const res = await supabase.from('medical_cases').update({ cert_status: newStatus }).eq('id', mc.id).select()
+      err = res.error; rows = res.data
     } else {
       const deadline = new Date(b.booking_date)
       deadline.setDate(deadline.getDate() + allowedDays)
-      await supabase.from('medical_cases').insert([{
+      const res = await supabase.from('medical_cases').insert([{
         booking_id: b.id, actual_count: 0, cert_count: 0,
         exam_date: b.booking_date, cert_deadline: deadline.toISOString().slice(0,10),
         cert_status: newStatus,
-      }])
+      }]).select()
+      err = res.error; rows = res.data
+    }
+    if (err) {
+      alert(`เปลี่ยนสถานะไม่สำเร็จ (${err.code || 'error'}): ${err.message || err}` +
+        (err.details ? `\n${err.details}` : '') +
+        `\n\nถ้าเป็นค่า "Hold" แล้วขึ้น constraint/violates check → ต้องเพิ่มค่า Hold ใน CHECK ของคอลัมน์ cert_status ใน Supabase ก่อน`)
+      return
+    }
+    if (!rows || rows.length === 0) {
+      alert('บันทึกแล้วแต่ไม่มีแถวถูกแก้ (อาจติดสิทธิ์ RLS ของตาราง medical_cases) — ลองรีเฟรชแล้วลองใหม่ ถ้ายังไม่ได้แจ้งผมพร้อมข้อความนี้')
+      return
     }
     fetchCases()
   }
@@ -297,6 +313,7 @@ export default function Medical() {
                 <option>รอผล Lab (7-14 วัน)</option>
                 <option>เกิน 3 วัน!</option>
                 <option>เกิน 14 วัน!</option>
+                <option>Hold (ลูกค้าขอ)</option>
                 <option>ส่งครบแล้ว</option>
               </select>
             </div>
@@ -409,6 +426,7 @@ export default function Medical() {
                       <option value="รอบันทึก">รอบันทึก</option>
                       <option value="รอข้อมูลแรงงาน">รอข้อมูลแรงงาน</option>
                       <option value="รอส่ง">รอส่งใบแพทย์</option>
+                      <option value="Hold">Hold (ลูกค้าขอ)</option>
                       <option value="เรียบร้อย">ส่งครบแล้ว</option>
                     </select>
                     {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
