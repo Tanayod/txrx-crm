@@ -79,7 +79,7 @@ export default function Bookings() {
     while (true) {
       let q = supabase
         .from('bookings')
-        .select('*, customers(customer_name), medical_cases(*), payments(*), special_exams(*, special_exam_items(*))')
+        .select('*, customers(customer_name), medical_cases(*), payments(*), sim_items(*), special_exams(*, special_exam_items(*))')
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
@@ -564,6 +564,78 @@ export default function Bookings() {
                         </div>
                       )}
                     </div>
+
+                    {/* 🔹 สรุปใบแพทย์ (ตัวเลขจากทีมแพทย์) */}
+                    {mc && (
+                      <div className="mt-3 bg-white rounded-lg border border-gray-100 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-gray-600 mb-1.5">ใบแพทย์</p>
+                        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+                          <span className="text-gray-500">ตรวจจริง <span className="font-semibold text-gray-800">{mc.actual_count ?? 0}</span></span>
+                          <span className="text-gray-500">ส่งแล้ว <span className="font-semibold text-green-700">{mc.cert_count ?? 0}</span></span>
+                          {(mc.hold_count ?? 0) > 0 && (
+                            <span className="text-gray-500">Hold <span className="font-semibold text-gray-600">{mc.hold_count}</span></span>
+                          )}
+                          {(() => {
+                            const pending = (mc.actual_count ?? 0) - (mc.cert_count ?? 0) - (mc.hold_count ?? 0)
+                            return pending > 0
+                              ? <span className="text-gray-500">ค้างส่ง <span className="font-semibold text-red-600">{pending}</span></span>
+                              : <span className="text-green-600 font-medium">ส่งครบแล้ว</span>
+                          })()}
+                          {mc.exam_date && <span className="text-gray-400">วันตรวจ {mc.exam_date}</span>}
+                          {mc.cert_deadline && <span className="text-gray-400">กำหนดส่ง {mc.cert_deadline}</span>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 🔹 ตรวจพิเศษที่ผูกไว้ — แสดงรายการตรวจย่อยทั้งหมด */}
+                    {b.special_exams && b.special_exams.length > 0 && (
+                      <div className="mt-3 bg-white rounded-lg border border-purple-100 overflow-hidden">
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 border-b border-purple-100">
+                          <IconMicroscope size={13} className="text-purple-600"/>
+                          <p className="text-xs font-semibold text-purple-700">ตรวจพิเศษที่ผูกไว้ · {b.special_exams.length} รายการ</p>
+                        </div>
+                        {b.special_exams.map((sp: any) => {
+                          const spItems = (sp.special_exam_items || []).filter((i: any) => (i.quantity || 0) > 0)
+                          return (
+                            <div key={sp.id} className="px-3 py-2.5 border-b border-gray-50 last:border-0">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs mb-1.5">
+                                <span className="text-gray-500">วันที่ <span className="font-medium text-gray-700">{sp.exam_date || '-'}</span></span>
+                                {sp.location_name && <span className="text-gray-500">สถานที่ <span className="font-medium text-gray-700">{sp.location_name}</span></span>}
+                                <span className="text-gray-500">แรงงาน <span className="font-medium text-gray-700">{sp.total_workers || 0} คน</span></span>
+                                <span className="text-gray-500">ยอดรวม <span className="font-semibold text-[#4338CA]">฿{(sp.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></span>
+                              </div>
+                              {spItems.length === 0 ? (
+                                <p className="text-xs text-gray-400">ยังไม่ได้ระบุรายการตรวจย่อย</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {spItems.map((it: any) => (
+                                    <span key={it.id} className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md">
+                                      {it.exam_name} ×{it.quantity}
+                                      <span className="text-purple-400 ml-1">฿{((it.subtotal ?? (it.quantity || 0) * (it.price_per_unit || 0)) || 0).toLocaleString()}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {sp.note && <p className="text-xs text-gray-500 mt-1.5">หมายเหตุ: {sp.note}</p>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* 🔹 ซิมที่ขาย — แยกตามแพ็กเกจ/ประเภท */}
+                    {b.sim_items && b.sim_items.length > 0 && (
+                      <div className="mt-3 bg-white rounded-lg border border-gray-100 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-gray-600 mb-1.5">ซิมที่ขาย · รวม {b.sim_items.reduce((s: number, i: any) => s + (Number(i.sim_count) || 0), 0)} ซิม</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {b.sim_items.map((si: any) => (
+                            <span key={si.id} className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-md">
+                              {si.sim_type || 'ซิม'} ฿{si.sim_package}/ด. ×{si.sim_count}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
