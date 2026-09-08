@@ -17,6 +17,7 @@ export default function Medical() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [form, setForm] = useState({ actual_count: 0, cert_count: 0, hold_count: 0, doctor_note: '', exam_date: '', parcel_sent: false })
   const [loaded, setLoaded] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
@@ -398,13 +399,22 @@ export default function Medical() {
 
               const spWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
 
+              const hasNote = !!(b.admin_note || mc?.doctor_note)
+
               return (
-                <div key={b.id} className="grid grid-cols-10 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center">
+                <div key={b.id} className="border-b border-gray-50">
+                <div
+                  className="grid grid-cols-10 gap-2 px-5 py-3 text-sm hover:bg-blue-50/30 transition-colors items-center cursor-pointer"
+                  onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                >
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
-                  <span className="col-span-2 font-medium text-gray-700 truncate">{b.customers?.customer_name}</span>
+                  <span className="col-span-2 font-medium text-gray-700 truncate flex items-center gap-1">
+                    {b.customers?.customer_name}
+                    {hasNote && <span title="มีหมายเหตุ" className="text-[11px]">📝</span>}
+                  </span>
                   <span className="text-gray-500 text-xs">{mc?.exam_date || b.booking_date}</span>
                   <span className="text-gray-500 text-xs truncate flex items-center gap-1">
-                    {b.location_name || '-'}
+                    {b.location_name || b.province || '-'}
                     {b.location_url && (
                       <a href={b.location_url} target="_blank" rel="noreferrer"
                         className="text-[#4338CA] hover:text-blue-700 flex-shrink-0" title="เปิด Google Map">
@@ -454,7 +464,118 @@ export default function Medical() {
                     )}
                     {mc?.parcel_sent && <span className="text-xs" title="นำส่งพัสดุแล้ว">📦</span>}
                   </span>
-                  <button onClick={() => handleOpenModal(b)} className="text-xs text-[#4338CA] hover:underline text-right font-medium">บันทึก / แนบไฟล์</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleOpenModal(b) }} className="text-xs text-[#4338CA] hover:underline text-right font-medium">บันทึก / แนบไฟล์</button>
+                </div>
+
+                {expandedId === b.id && (
+                  <div className="px-5 pb-4 pt-3 bg-blue-50/40 border-t border-blue-100">
+                    <div className="grid grid-cols-4 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">ประเภทบริการ</p>
+                        <p className="text-xs font-medium text-gray-700">{b.service_type || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">กะ</p>
+                        <p className="text-xs font-medium text-gray-700">{b.shift || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">เวลา</p>
+                        <p className="text-xs font-medium text-gray-700">{b.exam_time || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">สัญชาติ</p>
+                        <p className="text-xs font-medium text-gray-700">{b.nationality || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">จังหวัด</p>
+                        <p className="text-xs font-medium text-gray-700">{b.province || '-'}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-400 mb-0.5">สถานที่</p>
+                        <p className="text-xs font-medium text-gray-700">
+                          {b.location_name || '-'}
+                          {b.location_url && (
+                            <a href={b.location_url} target="_blank" rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-[#4338CA] hover:underline ml-2">เปิด Google Map</a>
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">ซิมทรู</p>
+                        <p className="text-xs font-medium text-gray-700">{b.sim_true_status || '-'}</p>
+                      </div>
+                      {b.admin_note && (
+                        <div className="col-span-4">
+                          <p className="text-xs text-gray-400 mb-0.5">หมายเหตุ (แอดมิน)</p>
+                          <p className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2 border border-gray-100">{b.admin_note}</p>
+                        </div>
+                      )}
+                      {mc?.doctor_note && (
+                        <div className="col-span-4">
+                          <p className="text-xs text-gray-400 mb-0.5">หมายเหตุ (ทีมแพทย์)</p>
+                          <p className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2 border border-gray-100">{mc.doctor_note}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 🔹 สรุปใบแพทย์ */}
+                    {mc && (
+                      <div className="mt-3 bg-white rounded-lg border border-gray-100 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-gray-600 mb-1.5">ใบแพทย์</p>
+                        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+                          <span className="text-gray-500">ตรวจจริง <span className="font-semibold text-gray-800">{mc.actual_count ?? 0}</span></span>
+                          <span className="text-gray-500">ส่งแล้ว <span className="font-semibold text-green-700">{mc.cert_count ?? 0}</span></span>
+                          {heldOf(mc) > 0 && (
+                            <span className="text-gray-500">Hold <span className="font-semibold text-slate-600">{heldOf(mc)}</span></span>
+                          )}
+                          {pendingRealOf(mc) > 0
+                            ? <span className="text-gray-500">ค้างส่ง <span className="font-semibold text-red-600">{pendingRealOf(mc)}</span></span>
+                            : ((mc.actual_count || 0) > 0 && <span className="text-green-600 font-medium">ส่งครบแล้ว</span>)}
+                          {mc.exam_date && <span className="text-gray-400">วันตรวจ {mc.exam_date}</span>}
+                          {mc.cert_deadline && <span className="text-gray-400">กำหนดส่ง {mc.cert_deadline}</span>}
+                          {mc.parcel_sent && <span className="text-gray-400">📦 นำส่งพัสดุแล้ว</span>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 🔹 ตรวจพิเศษที่ผูกไว้ */}
+                    {b.special_exams && b.special_exams.length > 0 && (
+                      <div className="mt-3 bg-white rounded-lg border border-purple-100 overflow-hidden">
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 border-b border-purple-100">
+                          <IconMicroscope size={13} className="text-purple-600"/>
+                          <p className="text-xs font-semibold text-purple-700">ตรวจพิเศษที่ผูกไว้ · {b.special_exams.length} รายการ</p>
+                        </div>
+                        {b.special_exams.map((sp: any) => {
+                          const spItems = (sp.special_exam_items || []).filter((i: any) => (i.quantity || 0) > 0)
+                          return (
+                            <div key={sp.id} className="px-3 py-2.5 border-b border-gray-50 last:border-0">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs mb-1.5">
+                                <span className="text-gray-500">วันที่ <span className="font-medium text-gray-700">{sp.exam_date || '-'}</span></span>
+                                {sp.location_name && <span className="text-gray-500">สถานที่ <span className="font-medium text-gray-700">{sp.location_name}</span></span>}
+                                <span className="text-gray-500">แรงงาน <span className="font-medium text-gray-700">{sp.total_workers || 0} คน</span></span>
+                                <span className="text-gray-500">ยอดรวม <span className="font-semibold text-[#4338CA]">฿{(sp.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></span>
+                              </div>
+                              {spItems.length === 0 ? (
+                                <p className="text-xs text-gray-400">ยังไม่ได้ระบุรายการตรวจย่อย</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {spItems.map((it: any) => (
+                                    <span key={it.id} className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md">
+                                      {it.exam_name} ×{it.quantity}
+                                      <span className="text-purple-400 ml-1">฿{((it.subtotal ?? (it.quantity || 0) * (it.price_per_unit || 0)) || 0).toLocaleString()}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {sp.note && <p className="text-xs text-gray-500 mt-1.5">หมายเหตุ: {sp.note}</p>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 </div>
               )
             })

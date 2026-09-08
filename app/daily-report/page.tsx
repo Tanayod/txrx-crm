@@ -13,6 +13,7 @@ export default function DailyReport() {
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bookings, setBookings] = useState<any[]>([])
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [summary, setSummary] = useState({ 
     todayBooked: 0, todayActual: 0, todaySim: 0, todaySpecial: 0,
     tomorrowBooked: 0, tomorrowActual: 0, tomorrowSim: 0, tomorrowSpecial: 0 
@@ -45,7 +46,7 @@ export default function DailyReport() {
     setLoading(true)
     const { data } = await supabase
       .from('bookings')
-      .select('*, customers(customer_name), medical_cases(actual_count, exam_date), payments(payment_status, amount_received), special_exams(*)')
+      .select('*, customers(customer_name), medical_cases(actual_count, exam_date, doctor_note, cert_count, hold_count, cert_status, cert_deadline, parcel_sent), payments(payment_status, amount_received), special_exams(*, special_exam_items(*))')
       .gte('booking_date', dateFrom)
       .lte('booking_date', dateTo)
       .order('booking_date', { ascending: true })
@@ -109,14 +110,21 @@ export default function DailyReport() {
       'วันที่': b.booking_date,
       'กะ': b.shift,
       'ชื่อลูกค้า': b.customers?.customer_name,
-      'สถานที่': b.location_name || '',
+      'สถานที่': b.location_name || b.province || '',
+      'จังหวัด': b.province || '',
       'Type': b.service_type || '',
       'เวลา': b.exam_time || '',
+      'สัญชาติ': b.nationality || '',
       'ยอดจอง': b.booked_count || 0,
       'ยอดตรวจจริง': getMc(b)?.actual_count ?? '',
       'ยอดตรวจพิเศษ': getSpCount(b),
+      'รายการตรวจพิเศษ': (b.special_exams || []).flatMap((s: any) => (s.special_exam_items || []).filter((i: any) => (i.quantity || 0) > 0).map((i: any) => `${i.exam_name}×${i.quantity}`)).join(', '),
       'ยอดซิม': b.sim_count || 0,
+      'ซิมทรู': b.sim_true_status || '',
       'สถานะเงิน': b.payments?.[0]?.payment_status || 'ยังไม่ชำระ',
+      'ยอดชำระ': b.payments?.[0]?.amount_received ?? '',
+      'หมายเหตุแอดมิน': b.admin_note || '',
+      'หมายเหตุทีมแพทย์': getMc(b)?.doctor_note || '',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -329,23 +337,124 @@ export default function DailyReport() {
                   </div>
                 </div>
                 {dayBookings.map((b: any) => {
-                  const actual = getMc(b)?.actual_count
+                  const mc = getMc(b)
+                  const actual = mc?.actual_count
                   const spCount = getSpCount(b)
+                  const p = b.payments?.[0]
+                  const hasNote = !!(b.admin_note || mc?.doctor_note)
                   return (
-                    <div key={b.id} className="grid grid-cols-11 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-blue-50/20 transition-colors items-center">
-                      <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>
+                    <div key={b.id} className="border-b border-gray-50">
+                    <div
+                      className="grid grid-cols-11 gap-2 px-5 py-3 text-sm hover:bg-blue-50/20 transition-colors items-center cursor-pointer"
+                      onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                    >
+                      <span className="col-span-2 font-medium text-gray-800 text-xs flex items-center gap-1">
+                        {b.customers?.customer_name}
+                        {hasNote && <span title="มีหมายเหตุ" className="text-[11px]">📝</span>}
+                      </span>
                       <span className="text-xs">
                         <span className={`px-1.5 py-0.5 rounded-md text-xs font-medium ${b.shift === 'เช้า' ? 'bg-yellow-50 text-yellow-700' : b.shift === 'บ่าย' ? 'bg-orange-50 text-orange-600' : 'bg-purple-50 text-purple-600'}`}>
                           {b.shift}
                         </span>
                       </span>
-                      <span className="col-span-2 text-gray-500 text-xs truncate">{b.location_name || '-'}</span>
+                      <span className="col-span-2 text-gray-500 text-xs truncate">{b.location_name || b.province || '-'}</span>
                       <span className="text-xs text-gray-500">{b.service_type?.replace('ตรวจนอกสถานที่ (Mobile)', 'Mobile') || '-'}</span>
                       <span className="text-xs text-gray-500">{b.exam_time || '-'}</span>
                       <span className="text-xs font-medium text-gray-700">{b.booked_count || '-'}</span>
                       <span className="text-xs font-bold text-emerald-600">{actual ?? <span className="text-gray-300">-</span>}</span>
                       <span className="text-xs font-bold text-purple-600">{spCount > 0 ? spCount : <span className="text-gray-300">-</span>}</span>
                       <span className="text-xs font-bold text-sky-600">{b.sim_count > 0 ? b.sim_count : <span className="text-gray-300">-</span>}</span>
+                    </div>
+
+                    {expandedId === b.id && (
+                      <div className="px-5 pb-4 pt-3 bg-blue-50/30 border-t border-blue-100">
+                        <div className="grid grid-cols-4 gap-3">
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">ประเภทบริการ</p>
+                            <p className="text-xs font-medium text-gray-700">{b.service_type || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">เวลา</p>
+                            <p className="text-xs font-medium text-gray-700">{b.exam_time || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">สัญชาติ</p>
+                            <p className="text-xs font-medium text-gray-700">{b.nationality || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">จังหวัด</p>
+                            <p className="text-xs font-medium text-gray-700">{b.province || '-'}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-400 mb-0.5">สถานที่</p>
+                            <p className="text-xs font-medium text-gray-700">
+                              {b.location_name || '-'}
+                              {b.location_url && (
+                                <a href={b.location_url} target="_blank" rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-[#4338CA] hover:underline ml-2">เปิด Google Map</a>
+                              )}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">ซิมทรู</p>
+                            <p className="text-xs font-medium text-gray-700">{b.sim_true_status || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">สถานะเงิน</p>
+                            <p className="text-xs font-medium text-gray-700">
+                              {p?.payment_status || 'ยังไม่ชำระ'}
+                              {p?.amount_received ? <span className="text-gray-400"> · รับแล้ว ฿{Number(p.amount_received).toLocaleString()}</span> : null}
+                            </p>
+                          </div>
+                          {b.admin_note && (
+                            <div className="col-span-4">
+                              <p className="text-xs text-gray-400 mb-0.5">หมายเหตุ (แอดมิน)</p>
+                              <p className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2 border border-gray-100">{b.admin_note}</p>
+                            </div>
+                          )}
+                          {mc?.doctor_note && (
+                            <div className="col-span-4">
+                              <p className="text-xs text-gray-400 mb-0.5">หมายเหตุ (ทีมแพทย์)</p>
+                              <p className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2 border border-gray-100">{mc.doctor_note}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {b.special_exams && b.special_exams.length > 0 && (
+                          <div className="mt-3 bg-white rounded-lg border border-purple-100 overflow-hidden">
+                            <div className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 border-b border-purple-100">
+                              <IconMicroscope size={13} className="text-purple-600"/>
+                              <p className="text-xs font-semibold text-purple-700">ตรวจพิเศษที่ผูกไว้ · {b.special_exams.length} รายการ</p>
+                            </div>
+                            {b.special_exams.map((sp: any) => {
+                              const spItems = (sp.special_exam_items || []).filter((i: any) => (i.quantity || 0) > 0)
+                              return (
+                                <div key={sp.id} className="px-3 py-2.5 border-b border-gray-50 last:border-0">
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs mb-1.5">
+                                    <span className="text-gray-500">วันที่ <span className="font-medium text-gray-700">{sp.exam_date || '-'}</span></span>
+                                    <span className="text-gray-500">แรงงาน <span className="font-medium text-gray-700">{sp.total_workers || 0} คน</span></span>
+                                    <span className="text-gray-500">ยอดรวม <span className="font-semibold text-[#4338CA]">฿{(sp.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></span>
+                                  </div>
+                                  {spItems.length === 0 ? (
+                                    <p className="text-xs text-gray-400">ยังไม่ได้ระบุรายการตรวจย่อย</p>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {spItems.map((it: any) => (
+                                        <span key={it.id} className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md">
+                                          {it.exam_name} ×{it.quantity}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {sp.note && <p className="text-xs text-gray-500 mt-1.5">หมายเหตุ: {sp.note}</p>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     </div>
                   )
                 })}
