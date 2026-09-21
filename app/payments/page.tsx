@@ -245,12 +245,21 @@ export default function Payments() {
       paid_at: form.payment_status === 'ชำระเงินแล้ว' ? new Date().toISOString() : null,
     }
     let paymentId = p?.id
+    let savedPayment: any = null
     if (p?.id) {
-      await supabase.from('payments').update(payload).eq('id', p.id)
+      const { data, error } = await supabase.from('payments').update(payload).eq('id', p.id).select().single()
+      if (error) { alert(`บันทึกการชำระเงินไม่สำเร็จ: ${error.message}`); setSavingPayment(false); return }
+      savedPayment = data
     } else {
-      const { data: inserted } = await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }]).select().single()
-      paymentId = inserted?.id
+      const { data, error } = await supabase.from('payments').insert([{ ...payload, booking_id: selected.id, customer_id: selected.customer_id }]).select().single()
+      if (error) { alert(`บันทึกการชำระเงินไม่สำเร็จ: ${error.message}`); setSavingPayment(false); return }
+      savedPayment = data
+      paymentId = data?.id
     }
+    // 🔹 ซิงก์ selected ให้มี payment ล่าสุดทันที — ถ้าไม่ทำ getP(selected) จะยังว่างอยู่
+    // และการแนบสลิป/กดปุ่มใบเสร็จหลังจากนี้ในโมดัลเดียวกันจะเข้าใจผิดว่ายังไม่มี payment
+    // (สร้าง payment ซ้ำซ้อน หรือปุ่มใบเสร็จค้างเป็น disabled)
+    if (savedPayment) setSelected((prev: any) => prev ? { ...prev, payments: [savedPayment] } : prev)
 
     const creditUsedDelta = Math.round((creditUsed - prevCreditUsed) * 100) / 100
     const creditDepositedDelta = Math.round((creditDeposited - prevCreditDeposited) * 100) / 100
@@ -310,23 +319,39 @@ export default function Payments() {
 
     let paymentId = getP(selected)?.id
     if (!paymentId) {
-      const { data: inserted } = await supabase
+      const { data: inserted, error } = await supabase
         .from('payments')
         .insert([{ booking_id: selected.id, customer_id: selected.customer_id, payment_status: 'ยังไม่ชำระ' }])
         .select().single()
-      paymentId = inserted?.id
+      // 🔹 เดิมไม่เช็ค error เลย ถ้า insert ล้มเหลว paymentId จะเป็น undefined
+      // แล้วขั้นตอนถัดไปทั้งหมดจะเงียบล้มเหลวตาม — ผู้ใช้กดแนบไฟล์แล้วดูเหมือนไม่มีอะไรเกิดขึ้น
+      if (error || !inserted) {
+        alert(`สร้างรายการชำระเงินไม่สำเร็จ: ${error?.message || 'ไม่ทราบสาเหตุ'}\nลองกด "บันทึกการชำระเงิน" ก่อน แล้วค่อยแนบสลิปอีกครั้ง`)
+        setUploading(false)
+        e.target.value = ''
+        return
+      }
+      paymentId = inserted.id
+      // 🔹 ซิงก์ selected ทันที กัน attach รอบถัดไปเข้าใจผิดว่ายังไม่มี payment แล้วสร้างซ้ำ
+      setSelected((prev: any) => prev ? { ...prev, payments: [inserted] } : prev)
     }
 
+    let failedCount = 0
     for (const file of files) {
       const uploaded = await uploadFileToGCS(file, 'payment_slips')
       if (uploaded) {
-        await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: uploaded.fileName, storage_url: uploaded.url }])
+        const { error } = await supabase.from('payment_slips').insert([{ payment_id: paymentId, file_name: uploaded.fileName, storage_url: uploaded.url }])
+        if (error) failedCount++
+      } else {
+        failedCount++
       }
     }
     await supabase.from('payments').update({ is_verified: true }).eq('id', paymentId)
     if (paymentId) fetchSlips(paymentId)
     fetchBookings()
     setUploading(false)
+    e.target.value = '' // เคลียร์ค่า input ไว้ เผื่อผู้ใช้ต้องเลือกไฟล์ชื่อเดิมซ้ำ ไม่งั้น onChange จะไม่ยิงอีกรอบ
+    if (failedCount > 0) alert(`แนบไฟล์ไม่สำเร็จ ${failedCount} ไฟล์ กรุณาลองใหม่อีกครั้ง`)
   }
 
   const handleDeleteSlip = async (slipId: string) => {
