@@ -375,9 +375,9 @@ export default function DailyReport() {
 
         {/* 🔹 Table สรุป */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
-            <span className="col-span-2">ลูกค้า</span><span>กะ</span><span className="col-span-2">สถานที่</span>
-            <span>Type</span><span>เวลา</span><span>ยอดจอง</span><span>ยอดตรวจ</span><span>ตรวจพิเศษ</span><span>ยอดซิม</span>
+          <div className="grid grid-cols-11 divide-x divide-gray-200 py-3 bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-200">
+            <span className="col-span-2 px-3">ลูกค้า</span><span className="px-3">กะ</span><span className="col-span-2 px-3">สถานที่</span>
+            <span className="px-3">Type</span><span className="px-3">เวลา</span><span className="px-3">ยอดจอง</span><span className="px-3">ยอดตรวจ</span><span className="px-3">ตรวจพิเศษ</span><span className="px-3">ยอดซิม</span>
           </div>
 
           {loading ? (
@@ -421,25 +421,25 @@ export default function DailyReport() {
                   return (
                     <div key={b.id} className="border-b border-gray-50">
                     <div
-                      className="grid grid-cols-11 gap-2 px-5 py-3 text-sm hover:bg-blue-50/20 transition-colors items-center cursor-pointer"
+                      className="grid grid-cols-11 divide-x divide-gray-100 py-3 text-sm hover:bg-blue-50/20 transition-colors items-center cursor-pointer"
                       onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
                     >
-                      <span className="col-span-2 font-medium text-gray-800 text-xs flex items-center gap-1">
+                      <span className="col-span-2 px-3 font-medium text-gray-800 text-xs flex items-center gap-1">
                         {b.customers?.customer_name}
                         {hasNote && <span title="มีหมายเหตุ" className="text-[11px]">📝</span>}
                       </span>
-                      <span className="text-xs">
+                      <span className="px-3 text-xs">
                         <span className={`px-1.5 py-0.5 rounded-md text-xs font-medium ${b.shift === 'เช้า' ? 'bg-yellow-50 text-yellow-700' : b.shift === 'บ่าย' ? 'bg-orange-50 text-orange-600' : 'bg-purple-50 text-purple-600'}`}>
                           {b.shift}
                         </span>
                       </span>
-                      <span className="col-span-2 text-gray-500 text-xs truncate">{b.location_name || b.province || '-'}</span>
-                      <span className="text-xs text-gray-500">{b.service_type?.replace('ตรวจนอกสถานที่ (Mobile)', 'Mobile') || '-'}</span>
-                      <span className="text-xs text-gray-500">{b.exam_time || '-'}</span>
-                      <span className="text-xs font-medium text-gray-700">{b.booked_count || '-'}</span>
-                      <span className="text-xs font-bold text-emerald-600">{actual ?? <span className="text-gray-300">-</span>}</span>
-                      <span className="text-xs font-bold text-purple-600">{spCount > 0 ? spCount : <span className="text-gray-300">-</span>}</span>
-                      <span className="text-xs font-bold text-sky-600">{b.sim_count > 0 ? b.sim_count : <span className="text-gray-300">-</span>}</span>
+                      <span className="col-span-2 px-3 text-gray-500 text-xs truncate">{b.location_name || b.province || '-'}</span>
+                      <span className="px-3 text-xs text-gray-500">{b.service_type?.replace('ตรวจนอกสถานที่ (Mobile)', 'Mobile') || '-'}</span>
+                      <span className="px-3 text-xs text-gray-500">{b.exam_time || '-'}</span>
+                      <span className="px-3 text-xs font-medium text-gray-700">{b.booked_count || '-'}</span>
+                      <span className="px-3 text-xs font-bold text-emerald-600">{actual ?? <span className="text-gray-300">-</span>}</span>
+                      <span className="px-3 text-xs font-bold text-purple-600">{spCount > 0 ? spCount : <span className="text-gray-300">-</span>}</span>
+                      <span className="px-3 text-xs font-bold text-sky-600">{b.sim_count > 0 ? b.sim_count : <span className="text-gray-300">-</span>}</span>
                     </div>
 
                     {expandedId === b.id && (
@@ -539,12 +539,12 @@ export default function DailyReport() {
           })}
 
           {filtered.length > 0 && (
-            <div className="grid grid-cols-11 gap-2 px-5 py-3 bg-gray-800 text-xs font-bold text-white">
-              <span className="col-span-7">รวมทั้งหมด</span>
-              <span>{totalBooked.toLocaleString()}</span>
-              <span className="text-emerald-400">{totalActual.toLocaleString()}</span>
-              <span className="text-purple-300">{totalSpecial.toLocaleString()}</span>
-              <span className="text-sky-400">{totalSim.toLocaleString()}</span>
+            <div className="grid grid-cols-11 divide-x divide-gray-600 py-3 bg-gray-800 text-xs font-bold text-white">
+              <span className="col-span-7 px-3">รวมทั้งหมด</span>
+              <span className="px-3">{totalBooked.toLocaleString()}</span>
+              <span className="px-3 text-emerald-400">{totalActual.toLocaleString()}</span>
+              <span className="px-3 text-purple-300">{totalSpecial.toLocaleString()}</span>
+              <span className="px-3 text-sky-400">{totalSim.toLocaleString()}</span>
             </div>
           )}
         </div>
