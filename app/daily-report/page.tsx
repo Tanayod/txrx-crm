@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 import { useState } from 'react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
@@ -105,31 +105,107 @@ export default function DailyReport() {
     grouped[d].push(b)
   })
 
-  const exportExcel = () => {
-    const rows = filtered.map(b => ({
-      'วันที่': b.booking_date,
-      'กะ': b.shift,
-      'ชื่อลูกค้า': b.customers?.customer_name,
-      'สถานที่': b.location_name || b.province || '',
-      'จังหวัด': b.province || '',
-      'Type': b.service_type || '',
-      'เวลา': b.exam_time || '',
-      'สัญชาติ': b.nationality || '',
-      'ยอดจอง': b.booked_count || 0,
-      'ยอดตรวจจริง': getMc(b)?.actual_count ?? '',
-      'ยอดตรวจพิเศษ': getSpCount(b),
-      'รายการตรวจพิเศษ': (b.special_exams || []).flatMap((s: any) => (s.special_exam_items || []).filter((i: any) => (i.quantity || 0) > 0).map((i: any) => `${i.exam_name}×${i.quantity}`)).join(', '),
-      'ยอดซิม': b.sim_count || 0,
-      'ซิมทรู': b.sim_true_status || '',
-      'สถานะเงิน': b.payments?.[0]?.payment_status || 'ยังไม่ชำระ',
-      'ยอดชำระ': b.payments?.[0]?.amount_received ?? '',
-      'หมายเหตุแอดมิน': b.admin_note || '',
-      'หมายเหตุทีมแพทย์': getMc(b)?.doctor_note || '',
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Daily Report')
-    XLSX.writeFile(wb, `daily_report_${dateFrom}_${dateTo}.xlsx`)
+  // 🔹 Export Excel แบบมีเส้นตาราง + หัวตารางสีชัดเจน อ่านง่าย (ใช้ exceljs แทน xlsx เพราะ xlsx เวอร์ชันฟรีใส่สไตล์ไม่ได้)
+  // ข้อมูลดึงจาก `filtered` เสมอ — เป็นชุดเดียวกับที่กรองอยู่บนหน้าจอ ณ ตอนกดปุ่ม (ช่วงวันที่ + ตัวกรองทั้งหมด)
+  const exportExcel = async () => {
+    const columns: { header: string, key: string, width: number }[] = [
+      { header: 'วันที่', key: 'date', width: 13 },
+      { header: 'เวลา', key: 'time', width: 10 },
+      { header: 'กะ', key: 'shift', width: 8 },
+      { header: 'ชื่อลูกค้า', key: 'customer', width: 26 },
+      { header: 'Type', key: 'type', width: 18 },
+      { header: 'สถานที่', key: 'location', width: 26 },
+      { header: 'จังหวัด', key: 'province', width: 14 },
+      { header: 'สัญชาติ', key: 'nationality', width: 10 },
+      { header: 'ยอดจอง', key: 'booked', width: 10 },
+      { header: 'ยอดตรวจจริง', key: 'actual', width: 12 },
+      { header: 'ยอดตรวจพิเศษ', key: 'special', width: 13 },
+      { header: 'รายการตรวจพิเศษ', key: 'specialItems', width: 38 },
+      { header: 'ยอดซิม', key: 'sim', width: 9 },
+      { header: 'ซิมทรู', key: 'simTrue', width: 16 },
+      { header: 'สถานะเงิน', key: 'payStatus', width: 13 },
+      { header: 'ยอดชำระ', key: 'payAmount', width: 12 },
+      { header: 'หมายเหตุแอดมิน', key: 'adminNote', width: 30 },
+      { header: 'หมายเหตุทีมแพทย์', key: 'doctorNote', width: 30 },
+    ]
+
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Txrx Service'
+    wb.created = new Date()
+    const ws = wb.addWorksheet('Daily Report', { views: [{ state: 'frozen', ySplit: 1 }] })
+    ws.columns = columns
+
+    filtered.forEach(b => {
+      const mc = getMc(b)
+      const p = b.payments?.[0]
+      ws.addRow({
+        date: b.booking_date,
+        time: b.exam_time || '',
+        shift: b.shift || '',
+        customer: b.customers?.customer_name || '',
+        type: b.service_type || '',
+        location: b.location_name || b.province || '',
+        province: b.province || '',
+        nationality: b.nationality || '',
+        booked: b.booked_count || 0,
+        actual: mc?.actual_count ?? '',
+        special: getSpCount(b),
+        specialItems: (b.special_exams || []).flatMap((s: any) => (s.special_exam_items || []).filter((i: any) => (i.quantity || 0) > 0).map((i: any) => `${i.exam_name}×${i.quantity}`)).join(', '),
+        sim: b.sim_count || 0,
+        simTrue: b.sim_true_status || '',
+        payStatus: p?.payment_status || 'ยังไม่ชำระ',
+        payAmount: p?.amount_received ?? '',
+        adminNote: b.admin_note || '',
+        doctorNote: mc?.doctor_note || '',
+      })
+    })
+
+    // แถวรวมท้ายตาราง
+    const totalRow = ws.addRow({
+      customer: `รวมทั้งหมด (${filtered.length} รายการ)`,
+      booked: totalBooked, actual: totalActual, special: totalSpecial, sim: totalSim,
+    })
+
+    const thinGrey = { style: 'thin' as const, color: { argb: 'FFD1D5DB' } }
+    const allBorder = { top: thinGrey, left: thinGrey, bottom: thinGrey, right: thinGrey }
+
+    // หัวตาราง — พื้นเหลือง ตัวหนา กึ่งกลาง มีเส้นขอบ
+    const headerRow = ws.getRow(1)
+    headerRow.height = 22
+    headerRow.eachCell({ includeEmpty: true }, cell => {
+      cell.font = { bold: true, color: { argb: 'FF78350F' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+      cell.border = allBorder
+    })
+
+    // แถวข้อมูล — เส้นขอบครบทุกช่อง จัดกึ่งกลางแนวตั้ง ตัวเลขชิดขวา
+    const numericKeys = new Set(['booked', 'actual', 'special', 'sim', 'payAmount'])
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r)
+      const isTotalRow = r === ws.rowCount
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        cell.border = allBorder
+        cell.alignment = { vertical: 'middle', horizontal: numericKeys.has(columns[colNumber - 1]?.key) ? 'right' : 'left', wrapText: false }
+        if (isTotalRow) {
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } }
+        } else if (r % 2 === 0) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } } // ลายม้าลายอ่อนๆ อ่านง่าย
+        }
+      })
+    }
+
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } }
+
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `daily_report_${dateFrom}_${dateTo}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const clearFilters = () => {
