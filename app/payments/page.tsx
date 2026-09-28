@@ -41,6 +41,7 @@ export default function Payments() {
   const [splitDateFrom, setSplitDateFrom] = useState('')
   const [splitDateTo, setSplitDateTo] = useState('')
   const [splitTotalReceived, setSplitTotalReceived] = useState<number | ''>('')
+  const [splitTotalReceivedText, setSplitTotalReceivedText] = useState('')
   const [splitSlipFile, setSplitSlipFile] = useState<File | null>(null)
   const [splitLoading, setSplitLoading] = useState(false)
   const [splitSaving, setSplitSaving] = useState(false)
@@ -391,7 +392,7 @@ export default function Payments() {
     })))
     setSplitSource({ method: 'transfer', bank_account_id: '' })
     setSplitSearch(''); setSplitDateFrom(''); setSplitDateTo('')
-    setSplitTotalReceived(''); setSplitSlipFile(null)
+    setSplitTotalReceived(''); setSplitTotalReceivedText(''); setSplitSlipFile(null)
     setSplitLoading(false)
     setShowSplitModal(true)
   }
@@ -1087,8 +1088,16 @@ export default function Payments() {
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">ยอดที่ลูกค้าโอนมาจริง (บาท) — ยอดสลิปเดียว</label>
                 <div className="flex gap-2">
-                  <input type="text" inputMode="numeric" value={splitTotalReceived}
-                    onChange={(e) => setSplitTotalReceived(e.target.value === '' ? '' : Number(e.target.value.replace(/\D/g,'')))}
+                  <input type="text" inputMode="decimal" value={splitTotalReceivedText}
+                    onChange={(e) => {
+                      let v = e.target.value.replace(/[^\d.]/g, '')
+                      const firstDot = v.indexOf('.')
+                      if (firstDot !== -1) {
+                        v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '')
+                      }
+                      setSplitTotalReceivedText(v)
+                      setSplitTotalReceived(v === '' || v === '.' ? '' : Number(v))
+                    }}
                     placeholder="0"
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
                   <button type="button" onClick={autoDistributeSplit}
