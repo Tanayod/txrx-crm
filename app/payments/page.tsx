@@ -32,6 +32,7 @@ export default function Payments() {
     use_vat: false, vat_mode: 'exclusive',
     use_wht: false,
     credit_used: 0, credit_toggle: false, keep_excess_credit: true,
+    credit_used_text: '', credit_deposit_text: '',
   })
 
   // ===== ตัดชำระหลายจอง =====
@@ -184,7 +185,10 @@ export default function Payments() {
       use_wht: p?.use_wht || false,
       credit_used: p?.credit_used || 0,
       credit_toggle: (p?.credit_used || 0) > 0,
-      keep_excess_credit: true,
+      // จองที่บันทึกไปแล้ว: ติ๊กตามที่เคยเก็บไว้จริง (ไม่ใช่ติ๊กใหม่ทุกครั้งที่เปิด)
+      keep_excess_credit: p?.id ? (p?.credit_deposited || 0) > 0 : true,
+      credit_used_text: (p?.credit_used || 0) > 0 ? String(p.credit_used) : '',
+      credit_deposit_text: (p?.credit_deposited || 0) > 0 ? String(p.credit_deposited) : '',
     })
     setAmountReceivedText(p?.id ? String(p?.amount_received ?? 0) : '')
     if (p?.id) fetchSlips(p.id)
@@ -220,10 +224,31 @@ export default function Payments() {
   const netDue = Math.max(Math.round((grandTotalSelected - creditUsed - whtAmount) * 100) / 100, 0)
   const actualReceived = form.amountTouched ? form.amount_received : netDue
   const excess = form.amountTouched ? Math.max(Math.round((actualReceived - netDue) * 100) / 100, 0) : 0
-  const creditDeposited = (excess > 0 && form.keep_excess_credit) ? excess : 0
+  // ช่องจำนวนเครดิตที่เก็บ: ว่าง = เก็บส่วนเกินทั้งหมด, กรอกน้อยกว่าได้ แต่ไม่เกินส่วนเกิน
+  const creditDepositInput = form.credit_deposit_text === '' ? excess : Number(form.credit_deposit_text) || 0
+  const creditDeposited = (excess > 0 && form.keep_excess_credit)
+    ? Math.round(Math.max(0, Math.min(creditDepositInput, excess)) * 100) / 100
+    : 0
+  const creditUsedDelta = Math.round((creditUsed - prevCreditUsed) * 100) / 100
+  const creditDepositedDelta = Math.round((creditDeposited - prevCreditDeposited) * 100) / 100
+  const balanceDelta = Math.round((creditDepositedDelta - creditUsedDelta) * 100) / 100
+  // ถ้ายกเลิก/ลดเครดิตที่เคยเก็บไว้ แต่เครดิตนั้นถูกนำไปใช้กับจองอื่นแล้ว ยอดคงเหลือจะติดลบ
+  const creditBalanceAfter = Math.round((creditAvailableRaw + balanceDelta) * 100) / 100
+  const creditWouldGoNegative = creditBalanceAfter < 0
+
+  const parseDecimalText = (raw: string) => {
+    let v = raw.replace(/[^\d.]/g, '')
+    const firstDot = v.indexOf('.')
+    if (firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '')
+    return v
+  }
 
   const handleSave = async () => {
     if (savingPayment) return
+    if (creditWouldGoNegative) {
+      alert(`ลดเครดิตที่เก็บไว้ไม่ได้: เครดิตส่วนนี้ถูกนำไปหักกับจองอื่นแล้ว (คงเหลือตอนนี้ ฿${creditAvailableRaw.toLocaleString()})\nให้ยกเลิก "ใช้เครดิต" ที่จองนั้นก่อน แล้วค่อยกลับมาแก้จองนี้`)
+      return
+    }
     setSavingPayment(true)
     const p = getP(selected)
     const payload = {
@@ -262,9 +287,6 @@ export default function Payments() {
     // (สร้าง payment ซ้ำซ้อน หรือปุ่มใบเสร็จค้างเป็น disabled)
     if (savedPayment) setSelected((prev: any) => prev ? { ...prev, payments: [savedPayment] } : prev)
 
-    const creditUsedDelta = Math.round((creditUsed - prevCreditUsed) * 100) / 100
-    const creditDepositedDelta = Math.round((creditDeposited - prevCreditDeposited) * 100) / 100
-    const balanceDelta = Math.round((creditDepositedDelta - creditUsedDelta) * 100) / 100
     if (balanceDelta !== 0 && selected.customer_id) {
       await supabase.rpc('adjust_customer_credit', { p_customer_id: selected.customer_id, p_delta: balanceDelta })
     }
@@ -765,19 +787,19 @@ export default function Payments() {
                   <p className="text-xs text-amber-600 mt-0.5">วงเงิน: ฿{selected.customers.credit_limit?.toLocaleString()} | ค้างอยู่: ฿{selected.customers.credit_balance?.toLocaleString()}</p>
                 </div>
               )}
-              {creditAvailableRaw > 0 && (
+              {(creditAvailableRaw > 0 || prevCreditUsed > 0) && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                   <p className="text-xs font-semibold text-emerald-700">💚 ลูกค้ามียอดเครดิตค้างอยู่ (จากการโอนเกินครั้งก่อน)</p>
                   <p className="text-lg font-bold text-emerald-700 mt-0.5">฿{creditAvailableRaw.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  {prevCreditUsed > 0 && (
+                    <p className="text-xs text-emerald-600 mt-0.5">จองนี้ใช้เครดิตไปแล้ว ฿{prevCreditUsed.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} — เอาติ๊กออกเพื่อยกเลิก (คืนเครดิตให้ลูกค้า) หรือแก้จำนวนด้านล่าง</p>
+                  )}
                   <label className="flex items-center gap-2 cursor-pointer mt-2.5">
                     <input type="checkbox" checked={form.credit_toggle}
-                      onChange={(e) => setForm({
-                        ...form,
-                        credit_toggle: e.target.checked,
-                        credit_used: e.target.checked
-                          ? Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected))
-                          : 0
-                      })}
+                      onChange={(e) => {
+                        const amt = e.target.checked ? Math.max(0, Math.min(creditAvailableRaw + prevCreditUsed, grandTotalSelected)) : 0
+                        setForm({ ...form, credit_toggle: e.target.checked, credit_used: amt, credit_used_text: amt > 0 ? String(amt) : '' })
+                      }}
                       className="rounded border-gray-300"/>
                     <span className="text-xs font-medium text-gray-700">ใช้เครดิตนี้หักยอดจองนี้</span>
                   </label>
@@ -787,10 +809,12 @@ export default function Payments() {
                   {form.credit_toggle && (
                     <div className="mt-2">
                       <label className="text-xs text-gray-600 mb-1 block">จำนวนเงินที่จะหัก (บาท)</label>
-                      <input type="text" inputMode="numeric" value={form.credit_used || ''}
+                      <input type="text" inputMode="decimal" value={form.credit_used_text}
                         onChange={(e) => {
-                          const v = Number(e.target.value.replace(/\D/g,''))
-                          setForm({...form, credit_used: Math.max(0, Math.min(v, maxUsableCredit))})
+                          let t = parseDecimalText(e.target.value)
+                          let v = t === '' || t === '.' ? 0 : Number(t)
+                          if (v > maxUsableCredit) { v = maxUsableCredit; t = String(maxUsableCredit) }
+                          setForm({...form, credit_used: Math.max(0, v), credit_used_text: t})
                         }}
                         className="w-full border border-emerald-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
                       <p className="text-xs text-gray-400 mt-1">หักได้สูงสุด ฿{maxUsableCredit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
@@ -935,10 +959,26 @@ export default function Payments() {
                       className="rounded border-gray-300"/>
                     <span className="text-xs text-gray-700">เก็บส่วนเกินนี้ไว้เป็นเครดิตให้ลูกค้า (นำไปหักยอดจองครั้งหน้าได้)</span>
                   </label>
+                  {form.keep_excess_credit && (
+                    <div className="mt-2 pl-6">
+                      <label className="text-xs text-gray-600 mb-1 block">จำนวนที่เก็บเป็นเครดิต (บาท)</label>
+                      <input type="text" inputMode="decimal" value={form.credit_deposit_text}
+                        onChange={(e) => setForm({...form, credit_deposit_text: parseDecimalText(e.target.value)})}
+                        placeholder={`${excess.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (ปล่อยว่าง = เก็บทั้งหมด)`}
+                        className="w-full border border-amber-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"/>
+                      <p className="text-xs text-gray-400 mt-1">เก็บได้สูงสุด ฿{excess.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    </div>
+                  )}
                   {!form.keep_excess_credit && (
-                    <p className="text-xs text-gray-400 mt-1">ถ้าไม่ติ๊ก ระบบจะไม่บันทึกส่วนเกินนี้เป็นเครดิต</p>
+                    <p className="text-xs text-gray-400 mt-1">ถ้าไม่ติ๊ก ระบบจะไม่บันทึกส่วนเกินนี้เป็นเครดิต{prevCreditDeposited > 0 ? ` (จะยกเลิกเครดิต ฿${prevCreditDeposited.toLocaleString()} ที่เคยเก็บไว้)` : ''}</p>
                   )}
                 </div>
+              )}
+              {prevCreditDeposited > 0 && excess === 0 && (
+                <p className="text-xs text-sky-600 bg-sky-50 border border-sky-100 rounded-lg p-2">ยอดรับชำระไม่เกินแล้ว — บันทึกแล้วจะยกเลิกเครดิต ฿{prevCreditDeposited.toLocaleString()} ที่เคยเก็บไว้จากจองนี้</p>
+              )}
+              {creditWouldGoNegative && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">⚠️ ลดเครดิตไม่ได้: เครดิตที่เก็บจากจองนี้ถูกนำไปหักกับจองอื่นแล้ว (คงเหลือ ฿{creditAvailableRaw.toLocaleString()}) — ให้ยกเลิก &quot;ใช้เครดิต&quot; ที่จองนั้นก่อน</p>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
