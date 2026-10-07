@@ -68,6 +68,7 @@ export default function FinanceReport() {
       const received = p?.amount_received || 0
       const whtAmount = p?.wht_amount || 0
       const creditUsed = p?.credit_used || 0
+      const creditDeposited = p?.credit_deposited || 0
       
       // สรุปยอดตรวจพิเศษในรายการจองนี้
       const specialWorkers = b.special_exams?.reduce((s: number, e: any) => s + (e.total_workers || 0), 0) || 0
@@ -75,13 +76,15 @@ export default function FinanceReport() {
 
       const netExpected = Math.max(Math.round((total - whtAmount - creditUsed) * 100) / 100, 0)
       const diff = Math.round((received - netExpected) * 100) / 100
+      // ส่วนที่จ่ายเกินแต่เก็บเป็นเครดิตให้ลูกค้าแล้ว ถือว่าจัดการแล้ว (ไปอยู่ในยอดเครดิตสะสม) ไม่นับเป็น "ชำระเกิน" ค้าง
+      const overUnresolved = diff > 0 ? Math.max(Math.round((diff - creditDeposited) * 100) / 100, 0) : 0
       const status = p?.payment_status || 'ยังไม่ชำระ'
       const hasSlip = p?.id ? slipSet.has(p.id) : false
       const slipCount = p?.id ? (slipCountMap[p.id] || 0) : 0
 
       let payType = 'ยังไม่ชำระ'
       if (status === 'ชำระเงินแล้ว') {
-        if (diff > 0.01) payType = 'ชำระเกิน'
+        if (overUnresolved > 0.01) payType = 'ชำระเกิน'
         else if (diff < -0.01) payType = 'ชำระขาด'
         else payType = 'ชำระครบ'
       } else if (status === 'เครดิต') payType = 'เครดิต'
@@ -99,6 +102,8 @@ export default function FinanceReport() {
         total_amount: total,
         wht_amount: whtAmount,
         credit_used: creditUsed,
+        credit_deposited: creditDeposited,
+        over_unresolved: overUnresolved,
         net_expected: netExpected,
         amount_received: received,
         diff,
@@ -142,7 +147,7 @@ export default function FinanceReport() {
     credit: filtered.filter(r => r.pay_type === 'เครดิต').length,
     creditAmount: filtered.filter(r => r.pay_type === 'เครดิต').reduce((s, r) => s + (r.total_amount - r.amount_received), 0),
     over: filtered.filter(r => r.pay_type === 'ชำระเกิน').length,
-    overAmount: filtered.filter(r => r.pay_type === 'ชำระเกิน').reduce((s, r) => s + r.diff, 0),
+    overAmount: filtered.filter(r => r.pay_type === 'ชำระเกิน').reduce((s, r) => s + r.over_unresolved, 0),
     under: filtered.filter(r => r.pay_type === 'ชำระขาด').length,
     underAmount: filtered.filter(r => r.pay_type === 'ชำระขาด').reduce((s, r) => s + Math.abs(r.diff), 0),
     hasSlip: filtered.filter(r => r.has_slip).length,
@@ -169,6 +174,7 @@ export default function FinanceReport() {
       'หัก ณ ที่จ่าย': r.wht_amount, 'เครดิตที่ใช้หัก': r.credit_used,
       'ยอดที่ควรได้รับสุทธิ': r.net_expected,
       'รับชำระจริง (บาท)': r.amount_received, 'ส่วนต่าง': r.diff,
+      'เก็บเป็นเครดิต (จากส่วนที่เกิน)': r.credit_deposited,
       'สถานะ': r.pay_type, 'วิธีชำระ': r.method,
       'เลขใบวางบิล': r.invoice_no, 'เลขอ้างอิง': r.ref_no,
       'แนบสลิป': r.has_slip ? `มี (${r.slip_count} ไฟล์)` : 'ไม่มี',
@@ -352,9 +358,14 @@ export default function FinanceReport() {
                 )}
               </div>
               <span className={r.amount_received > 0 ? 'font-medium text-green-600' : 'text-gray-300'}>{r.amount_received > 0 ? `฿${fmt(r.amount_received)}` : '-'}</span>
-              <span className={r.diff > 0.01 ? 'text-blue-600 font-medium' : r.diff < -0.01 ? 'text-orange-500 font-medium' : 'text-gray-300'}>
-                {Math.abs(r.diff) > 0.01 ? `${r.diff > 0 ? '+' : ''}฿${fmt(r.diff)}` : '-'}
-              </span>
+              <div>
+                <span className={r.over_unresolved > 0.01 ? 'text-blue-600 font-medium' : r.diff < -0.01 ? 'text-orange-500 font-medium' : r.diff > 0.01 ? 'text-gray-400' : 'text-gray-300'}>
+                  {Math.abs(r.diff) > 0.01 ? `${r.diff > 0 ? '+' : ''}฿${fmt(r.diff)}` : '-'}
+                </span>
+                {r.credit_deposited > 0 && r.diff > 0.01 && (
+                  <p className="text-sky-500 mt-0.5">เก็บเป็นเครดิต ฿{fmt(r.credit_deposited)}</p>
+                )}
+              </div>
               <span><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payTypeColor[r.pay_type] || 'bg-gray-100 text-gray-500'}`}>{r.pay_type}</span></span>
               <span>{r.has_slip ? <span className="text-green-600 font-medium">📎 {r.slip_count}</span> : <span className="text-gray-300">ไม่มี</span>}</span>
             </div>
