@@ -283,8 +283,17 @@ export default function Dashboard() {
     const repeatRate = activeSet.size > 0 ? Math.round((repeatCount/activeSet.size)*100) : 0
 
     // Retention
-    const ninetyDaysAgo = new Date(today); ninetyDaysAgo.setDate(today.getDate()-90)
-    const { data: allBookings } = await supabase.from('bookings').select('booking_date, service_type, customers(customer_name)').gte('booking_date', localDateStr(ninetyDaysAgo)).lte('booking_date', yestStr)
+    // ต้องดึงจองทั้งหมด (รวมจองล่วงหน้า) เพื่อหาวันที่มาล่าสุดจริงของแต่ละลูกค้า
+    // เดิมดึงแค่ 90 วันล่าสุด เลยไม่มีทางเห็นลูกค้าที่หายเกิน 90 วัน และกลับไปโชว์ลูกค้าที่เพิ่งมาแทน
+    let allBookings: any[] = []
+    let retFrom = 0
+    while (true) {
+      const { data: chunk } = await supabase.from('bookings').select('booking_date, service_type, customers(customer_name)').order('id').range(retFrom, retFrom + 999)
+      if (!chunk || chunk.length === 0) break
+      allBookings = [...allBookings, ...chunk]
+      if (chunk.length < 1000) break
+      retFrom += 1000
+    }
     const lastSeen: any = {}
     allBookings?.forEach(b => {
       const n = (b.customers as any)?.customer_name
@@ -295,7 +304,7 @@ export default function Dashboard() {
     Object.keys(lastSeen).forEach(name => {
       const d = lastSeen[name]
       const daysAgo = Math.floor((today.getTime() - new Date(d.date).getTime()) / 86400000)
-      if (daysAgo > 0) {
+      if (daysAgo > 90) {
         const item = { name, daysAgo, lastDate: d.date }
         if (d.type === 'ไฟล์ทบิน') mouList.push(item)
         else renewList.push(item)
