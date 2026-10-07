@@ -6,7 +6,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '../components/useAuth'
 import Sidebar from '../components/Sidebar'
-import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight, IconInfoCircle, IconMicroscope, IconCalendarStats, IconActivityHeartbeat, IconDeviceSim, IconGripVertical, IconEye, IconEyeOff, IconLayoutGrid } from '@tabler/icons-react'
+import { IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconRefresh, IconChevronRight, IconInfoCircle, IconMicroscope, IconCalendarStats, IconActivityHeartbeat, IconDeviceSim, IconGripVertical, IconEye, IconEyeOff, IconLayoutGrid, IconDownload } from '@tabler/icons-react'
+import { downloadExcel, type ExcelSheet } from '@/lib/excelExport'
 
 const DAYS_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 const MONTHS_TH_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
@@ -63,6 +64,9 @@ const WIDGET_SPAN: Record<string, string> = {
   special: 'lg:col-span-3',
 }
 
+// ขอบเขตเคสของการ์ดใบแพทย์ค้างส่ง/Hold = วันจองตั้งแต่ AGING_FROM ถึงวันนี้ (ใช้ทั้งตอน query และในหัวไฟล์ Excel)
+const AGING_FROM = '2026-01-01'
+
 const getMc = (b: any) => Array.isArray(b.medical_cases) ? b.medical_cases?.[0] : b.medical_cases
 
 const localDateStr = (d: Date) => {
@@ -101,6 +105,10 @@ export default function Dashboard() {
   const [agingCerts, setAgingCerts] = useState<any[]>([])
   const [holdCerts, setHoldCerts] = useState<any[]>([])
   const [inactiveCustomers, setInactiveCustomers] = useState<{ mou: any[], renew: any[] }>({ mou: [], renew: [] })
+  // รายการเต็มของการ์ด (บนจอโชว์แค่ top N) เก็บไว้ให้ปุ่ม Export Excel — `range` คือช่วงวันที่ที่ใช้ตอนดึงข้อมูลรอบล่าสุด
+  const [fullLists, setFullLists] = useState<{ aging: any[], hold: any[], topCustomers: any[], inactive: { mou: any[], renew: any[] }, range: { from: string, to: string } }>(
+    { aging: [], hold: [], topCustomers: [], inactive: { mou: [], renew: [] }, range: { from: '', to: '' } }
+  )
   const [debtByService, setDebtByService] = useState<any[]>([])
   const [totalDebt, setTotalDebt] = useState(0)
   const [simSummary, setSimSummary] = useState<any[]>([])
@@ -263,12 +271,14 @@ export default function Dashboard() {
     // Top customers
     const custCount: any = {}
     rangeData?.forEach(b => { const n = b.customers?.customer_name; if (n) custCount[n] = (custCount[n]||0) + (getMc(b)?.actual_count || b.booked_count || 0) })
-    setTopCustomers(Object.entries(custCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,10).map(([name,count]) => ({ name, count })))
+    const topCustomersFull = Object.entries(custCount).sort((a:any,b:any) => b[1]-a[1]).map(([name,count]) => ({ name, count: count as number }))
+    setTopCustomers(topCustomersFull.slice(0,10))
 
     // Active & Repeat
     const activeSet = new Set(rangeData?.map(b => b.customers?.customer_name).filter(Boolean))
     const custBookings: any = {}
     rangeData?.forEach(b => { const n = b.customers?.customer_name; if (n) custBookings[n] = (custBookings[n]||0) + 1 })
+    setFullLists(prev => ({ ...prev, range: { from, to }, topCustomers: topCustomersFull.map(c => ({ ...c, bookings: custBookings[c.name] || 0 })) }))
     const repeatCount = Object.values(custBookings).filter((v:any) => v > 1).length
     const repeatRate = activeSet.size > 0 ? Math.round((repeatCount/activeSet.size)*100) : 0
 
@@ -291,10 +301,10 @@ export default function Dashboard() {
         else renewList.push(item)
       }
     })
-    setInactiveCustomers({
-      mou: mouList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5),
-      renew: renewList.sort((a,b) => b.daysAgo-a.daysAgo).slice(0,5)
-    })
+    const mouSorted = mouList.sort((a,b) => b.daysAgo-a.daysAgo)
+    const renewSorted = renewList.sort((a,b) => b.daysAgo-a.daysAgo)
+    setInactiveCustomers({ mou: mouSorted.slice(0,5), renew: renewSorted.slice(0,5) })
+    setFullLists(prev => ({ ...prev, inactive: { mou: mouSorted, renew: renewSorted } }))
 
     // 🔹 Aging certs (แก้ไข: ใช้ exam_date เป็นหลักในการนับวัน ให้ตรงกับหน้า /medical
     //    และดึง exam_date มาด้วย เพราะเดิมไม่มีคอลัมน์นี้ใน select เลยไม่มีทางคำนวณให้ตรงกันได้)
@@ -303,8 +313,8 @@ export default function Dashboard() {
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('case_number, booking_date, booked_count, customers(customer_name), medical_cases(id, actual_count, cert_count, hold_count, cert_status, exam_date), special_exams(id)')
-        .gte('booking_date', '2026-01-01')
+        .select('case_number, booking_date, booked_count, service_type, location_name, customers(customer_name), medical_cases(id, actual_count, cert_count, hold_count, cert_status, exam_date), special_exams(id)')
+        .gte('booking_date', AGING_FROM)
         .lte('booking_date', todayStr)
         .range(agingFrom, agingFrom + 999)
       if (!chunk || chunk.length === 0) break
@@ -350,7 +360,13 @@ export default function Dashboard() {
           daysOver,
           hasSpecialExam,
           isOverdue,
-          cert_status: mc?.cert_status || 'รอบันทึก'
+          cert_status: mc?.cert_status || 'รอบันทึก',
+          // ใช้เฉพาะตอน Export Excel
+          service_type: b.service_type,
+          location_name: b.location_name,
+          actual,
+          certSent,
+          allowedDays,
         }
       })
       // เอาเฉพาะเคสที่ยัง "ค้างส่งจริง" (Hold ไม่นับ เพราะหักออกจาก pending แล้ว)
@@ -361,6 +377,7 @@ export default function Dashboard() {
     const totalOverdueCerts = overdueOnly.reduce((s, b) => s + b.pending, 0)
     const totalAllPendingCerts = agingList.reduce((s, b) => s + b.pending, 0)
     setAgingCerts(agingList.slice(0, 8))
+    setFullLists(prev => ({ ...prev, aging: agingList }))
 
     // 🔹 รายการ Hold (ลูกค้าขอพักใบแพทย์) — นับเป็นจำนวนแรงงาน + list แยกบนการ์ด
     const holdRows = (allYearMedical || [])
@@ -371,6 +388,8 @@ export default function Dashboard() {
           case_number: b.case_number,
           booking_date: mc?.exam_date || b.booking_date,
           held: heldOf(mc),
+          actual: mc?.actual_count || 0,
+          certSent: mc?.cert_count || 0,
         }
       })
       .filter(r => r.held > 0)
@@ -378,6 +397,7 @@ export default function Dashboard() {
     const holdWorkers = holdRows.reduce((s, r) => s + r.held, 0)
     const holdCaseCount = holdRows.length
     setHoldCerts(holdRows.slice(0, 5))
+    setFullLists(prev => ({ ...prev, hold: holdRows }))
 
     // ยอดหนี้ค้างชำระ
     let allDebtBookings: any[] = []
@@ -593,6 +613,158 @@ export default function Dashboard() {
   const simTotalCount = simSummary.reduce((s: number, x: any) => s + x.count, 0)
   const specialAvgPerHead = specialExamTotalCount > 0 ? specialExamTotal / specialExamTotalCount : 0
 
+  // ── Export Excel (ใช้รายการเต็มใน fullLists ไม่ใช่แค่ top N ที่โชว์บนการ์ด) ──
+  const runExport = async (fn: () => Promise<void>) => {
+    try { await fn() } catch (err: any) { alert(`Export Excel ไม่สำเร็จ: ${err?.message || err}`) }
+  }
+
+  const exportAgingExcel = () => runExport(async () => {
+    const { aging, hold } = fullLists
+    const asOf = localDateStr(new Date())
+    const sum = (rows: any[], f: (r: any) => number) => rows.reduce((s, r) => s + f(r), 0)
+    const totalPending = sum(aging, c => c.pending)
+    const totalOverdue = sum(aging.filter(c => c.isOverdue), c => c.pending)
+    const subtitle = `ข้อมูล ณ วันที่ ${asOf} · เคสวันที่ ${AGING_FROM} ถึง ${asOf} · เกณฑ์เกินกำหนด: ปกติ 3 วัน / ตรวจพิเศษ 14 วัน นับจากวันตรวจจริง · ค้างส่ง = ตรวจจริง − ส่งแล้ว − Hold`
+
+    const byCust = new Map<string, { name: string, cases: number, overdueCases: number, pending: number, overduePending: number, maxDays: number }>()
+    aging.forEach(c => {
+      const name = c.customer_name || '(ไม่ระบุลูกค้า)'
+      const e = byCust.get(name) || { name, cases: 0, overdueCases: 0, pending: 0, overduePending: 0, maxDays: 0 }
+      e.cases += 1
+      e.pending += c.pending
+      if (c.isOverdue) { e.overdueCases += 1; e.overduePending += c.pending }
+      e.maxDays = Math.max(e.maxDays, c.daysOver)
+      byCust.set(name, e)
+    })
+    const custRows = [...byCust.values()]
+      .sort((a, b) => b.overduePending - a.overduePending || b.pending - a.pending)
+      .map((e, i) => ({ no: i + 1, ...e, notOverduePending: e.pending - e.overduePending }))
+
+    const sheets: ExcelSheet[] = [
+      {
+        name: 'สรุปรายลูกค้า',
+        title: 'สรุปใบแพทย์ค้างส่ง — รายลูกค้า',
+        subtitle: `${subtitle} · ค้างรวม ${totalPending.toLocaleString()} คน (เกินกำหนด ${totalOverdue.toLocaleString()} คน) จาก ${aging.length} เคส`,
+        columns: [
+          { header: 'ลำดับ', key: 'no', width: 8, align: 'center' },
+          { header: 'ลูกค้า', key: 'name', width: 34 },
+          { header: 'จำนวนเคสที่ค้าง', key: 'cases', width: 14, format: 'int' },
+          { header: 'เคสที่เกินกำหนด', key: 'overdueCases', width: 14, format: 'int' },
+          { header: 'ค้างส่งรวม (คน)', key: 'pending', width: 15, format: 'int' },
+          { header: 'เกินกำหนด (คน)', key: 'overduePending', width: 15, format: 'int' },
+          { header: 'ยังไม่เกินกำหนด (คน)', key: 'notOverduePending', width: 19, format: 'int' },
+          { header: 'เคสเก่าสุด (วันนับจากวันตรวจ)', key: 'maxDays', width: 24, format: 'int' },
+        ],
+        rows: custRows,
+        totals: { name: `รวม ${custRows.length} ลูกค้า`, cases: aging.length, overdueCases: aging.filter(c => c.isOverdue).length, pending: totalPending, overduePending: totalOverdue, notOverduePending: totalPending - totalOverdue },
+        rowFill: r => (r.overduePending > 0 ? 'FFFEE2E2' : undefined),
+      },
+      {
+        name: 'รายเคสที่ค้าง',
+        title: 'ใบแพทย์ค้างส่ง — รายเคส',
+        subtitle: `${subtitle} · แถวสีแดง = เกินกำหนด, สีเหลือง = ยังไม่เกินแต่ส่งไม่ครบ`,
+        columns: [
+          { header: 'ลำดับ', key: 'no', width: 8, align: 'center' },
+          { header: 'ลูกค้า', key: 'customer', width: 30 },
+          { header: 'เลขจอง', key: 'caseNo', width: 22 },
+          { header: 'ประเภทบริการ', key: 'service', width: 24 },
+          { header: 'สถานที่', key: 'location', width: 26 },
+          { header: 'วันที่ตรวจ', key: 'examDate', width: 13, format: 'date', align: 'center' },
+          { header: 'ตรวจจริง', key: 'actual', width: 10, format: 'int' },
+          { header: 'ส่งแล้ว', key: 'sent', width: 10, format: 'int' },
+          { header: 'Hold', key: 'held', width: 9, format: 'int' },
+          { header: 'ค้างส่ง (คน)', key: 'pending', width: 12, format: 'int' },
+          { header: 'กำหนดส่ง (วัน)', key: 'allowed', width: 13, format: 'int' },
+          { header: 'ผ่านมาแล้ว (วัน)', key: 'daysOver', width: 15, format: 'int' },
+          { header: 'เกินกำหนด (วัน)', key: 'lateDays', width: 15, format: 'int' },
+          { header: 'สถานะ', key: 'status', width: 18, align: 'center' },
+          { header: 'ตรวจพิเศษ', key: 'special', width: 11, align: 'center' },
+          { header: 'สถานะใบแพทย์', key: 'certStatus', width: 16 },
+        ],
+        rows: aging.map((c, i) => ({
+          no: i + 1, customer: c.customer_name || '', caseNo: c.case_number, service: c.service_type || '', location: c.location_name || '',
+          examDate: c.booking_date, actual: c.actual, sent: c.certSent, held: c.held, pending: c.pending,
+          allowed: c.allowedDays, daysOver: c.daysOver, lateDays: c.isOverdue ? c.daysOver - c.allowedDays : 0,
+          status: c.isOverdue ? 'เกินกำหนด' : 'ยังไม่เกินกำหนด', special: c.hasSpecialExam ? 'มี' : '-', certStatus: c.cert_status,
+          isOverdue: c.isOverdue,
+        })),
+        totals: { customer: `รวม ${aging.length} เคส`, actual: sum(aging, c => c.actual), sent: sum(aging, c => c.certSent), held: sum(aging, c => c.held), pending: totalPending },
+        rowFill: r => (r.isOverdue ? 'FFFEE2E2' : 'FFFEF3C7'),
+      },
+    ]
+
+    if (hold.length > 0) {
+      sheets.push({
+        name: 'Hold',
+        title: 'Hold — ลูกค้าขอพักใบแพทย์',
+        subtitle: `ข้อมูล ณ วันที่ ${asOf} · ไม่นับเป็นค้างส่ง (หักออกจากยอดค้างแล้ว)`,
+        columns: [
+          { header: 'ลำดับ', key: 'no', width: 8, align: 'center' },
+          { header: 'ลูกค้า', key: 'customer', width: 30 },
+          { header: 'เลขจอง', key: 'caseNo', width: 22 },
+          { header: 'วันที่ตรวจ', key: 'examDate', width: 13, format: 'date', align: 'center' },
+          { header: 'ตรวจจริง', key: 'actual', width: 10, format: 'int' },
+          { header: 'ส่งแล้ว', key: 'sent', width: 10, format: 'int' },
+          { header: 'Hold (คน)', key: 'held', width: 11, format: 'int' },
+        ],
+        rows: hold.map((h, i) => ({ no: i + 1, customer: h.customer_name || '', caseNo: h.case_number, examDate: h.booking_date, actual: h.actual, sent: h.certSent, held: h.held })),
+        totals: { customer: `รวม ${hold.length} เคส`, actual: sum(hold, h => h.actual), sent: sum(hold, h => h.certSent), held: sum(hold, h => h.held) },
+      })
+    }
+
+    await downloadExcel(`pending_certs_${asOf}.xlsx`, sheets)
+  })
+
+  const exportTopCustomersExcel = () => runExport(async () => {
+    const { topCustomers: rows, range } = fullLists
+    const rangeLabel = range.from && range.to ? `${range.from} ถึง ${range.to}` : 'ทุกช่วงวันที่'
+    const total = kpi.rangeTotal
+    await downloadExcel(`top_customers_${range.from || 'all'}_${range.to || 'all'}.xlsx`, [{
+      name: 'ลูกค้าใช้บริการเยอะสุด',
+      title: 'ลูกค้าที่ใช้บริการเยอะสุด',
+      subtitle: `ช่วงวันที่ ${rangeLabel} · ทุกลูกค้าในช่วง · สัดส่วน = ยอดของลูกค้า ÷ ยอดตรวจจริงทั้งหมดในช่วง (${total.toLocaleString()} คน)`,
+      columns: [
+        { header: 'อันดับ', key: 'rank', width: 9, align: 'center' },
+        { header: 'ลูกค้า', key: 'name', width: 36 },
+        { header: 'จำนวนจอง (ครั้ง)', key: 'bookings', width: 16, format: 'int' },
+        { header: 'ยอดตรวจ (คน)', key: 'count', width: 15, format: 'int' },
+        { header: 'สัดส่วน', key: 'share', width: 11, format: 'percent' },
+      ],
+      rows: rows.map((c, i) => ({ rank: i + 1, name: c.name, bookings: c.bookings, count: c.count, share: total > 0 ? c.count / total : 0 })),
+      totals: { name: `รวม ${rows.length} ลูกค้า`, bookings: rows.reduce((s, c) => s + c.bookings, 0), count: rows.reduce((s, c) => s + c.count, 0) },
+    }])
+  })
+
+  const exportInactiveExcel = () => runExport(async () => {
+    const { mou, renew } = fullLists.inactive
+    const asOf = localDateStr(new Date())
+    const rows = [
+      ...mou.map(c => ({ group: 'ไฟล์ทบิน / MOU', name: c.name, lastDate: c.lastDate, daysAgo: c.daysAgo })),
+      ...renew.map(c => ({ group: 'กลุ่มอื่นๆ (ควรติดต่อ)', name: c.name, lastDate: c.lastDate, daysAgo: c.daysAgo })),
+    ]
+    await downloadExcel(`inactive_customers_${asOf}.xlsx`, [{
+      name: 'ลูกค้าที่หายไปนาน',
+      title: 'ลูกค้าที่หายไปนาน',
+      subtitle: `ข้อมูล ณ วันที่ ${asOf} · ลูกค้าที่เคยมาใช้บริการภายใน 90 วันที่ผ่านมา (ไม่รวมวันนี้) เรียงจากที่ห่างหายนานสุด`,
+      columns: [
+        { header: 'กลุ่ม', key: 'group', width: 24 },
+        { header: 'ลูกค้า', key: 'name', width: 36 },
+        { header: 'มาใช้บริการล่าสุด', key: 'lastDate', width: 18, format: 'date', align: 'center' },
+        { header: 'หายไป (วัน)', key: 'daysAgo', width: 13, format: 'int' },
+      ],
+      rows,
+      totals: { group: `รวม ${rows.length} ราย` },
+    }])
+  })
+
+  const ExportBtn = ({ onClick, disabled }: { onClick: () => void, disabled?: boolean }) => (
+    <button type="button" onClick={onClick} disabled={disabled} title="ดาวน์โหลดเป็นไฟล์ Excel"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-white transition-colors hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ borderColor: P.line, color: P.primary }}>
+      <IconDownload size={11}/> Excel
+    </button>
+  )
+
   const CARD = 'bg-white rounded-xl border border-[#E9EAF2] shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.05)]'
   const svcColor = (name: string, i = 0) => {
     const map: Record<string, string> = {
@@ -786,7 +958,12 @@ export default function Dashboard() {
     topCustomers: (
       <div className={`${CARD} p-5 h-full`}>
         <SectionHead dot={P.indigo} title="ลูกค้าที่ใช้บริการเยอะสุด" sub="% = สัดส่วนของยอดตรวจจริงทั้งหมด"
-          right={<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: P.track, color: P.muted }}>{topCustomers.length} ราย</span>} />
+          right={
+            <div className="flex items-center gap-1.5">
+              <ExportBtn onClick={exportTopCustomersExcel} disabled={loading || fullLists.topCustomers.length === 0} />
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: P.track, color: P.muted }}>{topCustomers.length} ราย</span>
+            </div>
+          } />
         <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
           {topCustomers.length === 0 && !loading && <p className="text-sm text-center py-4" style={{ color: P.faint }}>ไม่มีข้อมูล</p>}
           {topCustomers.map((c, i) => {
@@ -816,6 +993,7 @@ export default function Dashboard() {
           sub="แดง = เกินกำหนด (ปกติ 3 วัน / ตรวจพิเศษ 14 วัน) · เหลือง = ยังไม่เกินแต่ส่งไม่ครบ"
           right={
             <div className="flex flex-col items-end gap-1">
+              <ExportBtn onClick={exportAgingExcel} disabled={loading || (fullLists.aging.length === 0 && fullLists.hold.length === 0)} />
               <span className="text-[11px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded-full tabular-nums">เกิน {kpi.overdueCerts.toLocaleString()}</span>
               <span className="text-[11px] bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded-full tabular-nums">รวม {kpi.allPendingCerts.toLocaleString()}</span>
               {kpi.holdCerts > 0 && (
@@ -881,7 +1059,8 @@ export default function Dashboard() {
 
     inactive: (
       <div className={`${CARD} p-5 h-full`}>
-        <SectionHead dot={P.amber} title="ลูกค้าที่หายไปนาน" sub="ไม่มาใช้บริการเกิน 90 วัน" />
+        <SectionHead dot={P.amber} title="ลูกค้าที่หายไปนาน" sub="ไม่มาใช้บริการเกิน 90 วัน"
+          right={<ExportBtn onClick={exportInactiveExcel} disabled={loading || (fullLists.inactive.mou.length + fullLists.inactive.renew.length === 0)} />} />
         <div className="mb-3">
           <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: P.indigo }}>ไฟล์ทบิน / MOU</p>
           <div className="space-y-1.5">
