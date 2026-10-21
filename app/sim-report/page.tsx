@@ -37,8 +37,9 @@ const sortPkgs = (pkgs: string[]) => [...pkgs].sort((a, b) => {
   return na - nb
 })
 const pkgLabel = (p: string) => isNaN(Number(p)) ? p : `฿${p}/ด.`
-// ยอดเงิน = ราคาแพ็กเกจ × จำนวนซิม (ข้อมูลเก่าที่ไม่ระบุแพ็กเกจ คิดเป็น 0)
-const pkgPrice = (p: string) => Number(p) || 0
+// ยอดเงิน = ราคาแพ็กเกจ × จำนวนซิม (ข้อมูลเก่าที่ไม่ระบุแพ็กเกจ คิดเป็น ฿200)
+const LEGACY_PRICE = 200
+const pkgPrice = (p: string) => Number(p) || LEGACY_PRICE
 const baht = (n: number) => `฿${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
 export default function SimReport() {
@@ -307,7 +308,7 @@ export default function SimReport() {
             </div>
           ))}
         </div>
-        {hasLegacy && <p className="text-[11px] text-amber-600 -mt-2 mb-4">* ซิมแพ็กเกจ &quot;ไม่ระบุ&quot; (ข้อมูลเก่า) ไม่มีราคา จึงไม่นับในยอดเงิน</p>}
+        {hasLegacy && <p className="text-[11px] text-amber-600 -mt-2 mb-4">* ซิมแพ็กเกจ &quot;ไม่ระบุ&quot; (ข้อมูลเก่า) คิดยอดเงินที่ ฿{LEGACY_PRICE}/ซิม</p>}
 
         {/* รายเดือน */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm mb-4 overflow-x-auto">
