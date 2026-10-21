@@ -26,6 +26,7 @@ type SimRow = {
   pkg: string
   type: string
   count: number
+  amount: number
 }
 
 // เรียงแพ็กเกจตามราคา ส่วน "ไม่ระบุ" (ข้อมูลเก่า) ไว้ท้ายสุด
@@ -36,6 +37,9 @@ const sortPkgs = (pkgs: string[]) => [...pkgs].sort((a, b) => {
   return na - nb
 })
 const pkgLabel = (p: string) => isNaN(Number(p)) ? p : `฿${p}/ด.`
+// ยอดเงิน = ราคาแพ็กเกจ × จำนวนซิม (ข้อมูลเก่าที่ไม่ระบุแพ็กเกจ คิดเป็น 0)
+const pkgPrice = (p: string) => Number(p) || 0
+const baht = (n: number) => `฿${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
 export default function SimReport() {
   const { user, role, ready, logout } = useAuth('/sim-report')
@@ -91,6 +95,7 @@ export default function SimReport() {
         pkg: pkg ? String(pkg) : LEGACY_PKG,
         type: type || 'ไม่ระบุ',
         count: Number(count) || 0,
+        amount: pkgPrice(pkg ? String(pkg) : LEGACY_PKG) * (Number(count) || 0),
       }
     }
     const all = [
@@ -117,14 +122,15 @@ export default function SimReport() {
   // สรุปยอดชุดหนึ่ง: รวม / แยกแพ็กเกจ / แยกประเภท / จำนวนจอง / จำนวนลูกค้า
   const summarize = (list: SimRow[]) => {
     const byPkg: Record<string, number> = {}, byType: Record<string, number> = {}
-    let total = 0
+    let total = 0, amount = 0
     list.forEach(r => {
       total += r.count
+      amount += r.amount
       byPkg[r.pkg] = (byPkg[r.pkg] || 0) + r.count
       byType[r.type] = (byType[r.type] || 0) + r.count
     })
     return {
-      total, byPkg, byType,
+      total, amount, byPkg, byType,
       bookings: new Set(list.map(r => r.case_number)).size,
       customers: new Set(list.map(r => r.customer)).size,
     }
@@ -136,10 +142,11 @@ export default function SimReport() {
   const monthly = useMemo(() => MONTHS.map((_, i) => ({ month: i + 1, ...summarize(yearRows.filter(r => r.month === i + 1)) })), [yearRows])
   const byCustomer = useMemo(() => {
     const scope = month ? yearRows.filter(r => r.month === month) : yearRows
-    const map: Record<string, { customer: string, total: number, bookings: Set<string>, byPkg: Record<string, number> }> = {}
+    const map: Record<string, { customer: string, total: number, amount: number, bookings: Set<string>, byPkg: Record<string, number> }> = {}
     scope.forEach(r => {
-      const c = map[r.customer] ||= { customer: r.customer, total: 0, bookings: new Set(), byPkg: {} }
+      const c = map[r.customer] ||= { customer: r.customer, total: 0, amount: 0, bookings: new Set(), byPkg: {} }
       c.total += r.count
+      c.amount += r.amount
       c.bookings.add(r.case_number)
       c.byPkg[r.pkg] = (c.byPkg[r.pkg] || 0) + r.count
     })
@@ -150,6 +157,8 @@ export default function SimReport() {
     return yearRows.filter(r => (!month || r.month === month) && (!q || r.customer.toLowerCase().includes(q) || r.case_number.toLowerCase().includes(q)))
   }, [yearRows, month, search])
   const detailTotal = details.reduce((s, r) => s + r.count, 0)
+  const detailAmount = details.reduce((s, r) => s + r.amount, 0)
+  const hasLegacy = yearRows.some(r => r.pkg === LEGACY_PKG)
 
   const exportExcel = async () => {
     const pkgCols: ExcelColumn[] = pkgs.map(p => ({ header: `แพ็กเกจ ${pkgLabel(p)}`, key: `pkg_${p}`, width: 14, format: 'int' }))
@@ -157,13 +166,14 @@ export default function SimReport() {
     const flat = (s: ReturnType<typeof summarize>) => ({
       ...Object.fromEntries(pkgs.map(p => [`pkg_${p}`, s.byPkg[p] || 0])),
       ...Object.fromEntries(types.map(t => [`type_${t}`, s.byType[t] || 0])),
-      bookings: s.bookings, customers: s.customers, total: s.total,
+      bookings: s.bookings, customers: s.customers, total: s.total, amount: s.amount,
     })
     const sumCols: ExcelColumn[] = [
       ...pkgCols, ...typeCols,
       { header: 'จำนวนจอง', key: 'bookings', width: 11, format: 'int' },
       { header: 'จำนวนลูกค้า', key: 'customers', width: 12, format: 'int' },
       { header: 'รวมซิม', key: 'total', width: 11, format: 'int' },
+      { header: 'ยอดเงิน (บาท)', key: 'amount', width: 15, format: 'baht' },
     ]
     const monthLabel = month ? `เดือน ${MONTHS[month - 1]} ${year}` : `ทั้งปี ${year}`
     await downloadExcel(`sim_report_${year}${month ? `-${String(month).padStart(2, '0')}` : ''}.xlsx`, [
@@ -186,9 +196,10 @@ export default function SimReport() {
           ...pkgCols,
           { header: 'จำนวนจอง', key: 'bookings', width: 11, format: 'int' },
           { header: 'รวมซิม', key: 'total', width: 11, format: 'int' },
+          { header: 'ยอดเงิน (บาท)', key: 'amount', width: 15, format: 'baht' },
         ],
-        rows: byCustomer.map(c => ({ customer: c.customer, ...Object.fromEntries(pkgs.map(p => [`pkg_${p}`, c.byPkg[p] || 0])), bookings: c.bookingCount, total: c.total })),
-        totals: { customer: `รวม ${byCustomer.length} ลูกค้า`, total: byCustomer.reduce((s, c) => s + c.total, 0) },
+        rows: byCustomer.map(c => ({ customer: c.customer, ...Object.fromEntries(pkgs.map(p => [`pkg_${p}`, c.byPkg[p] || 0])), bookings: c.bookingCount, total: c.total, amount: c.amount })),
+        totals: { customer: `รวม ${byCustomer.length} ลูกค้า`, total: byCustomer.reduce((s, c) => s + c.total, 0), amount: byCustomer.reduce((s, c) => s + c.amount, 0) },
       },
       {
         name: 'รายละเอียด', title: `รายละเอียดการขายซิม — ${monthLabel}`,
@@ -202,10 +213,11 @@ export default function SimReport() {
           { header: 'แพ็กเกจ', key: 'pkg', width: 12, align: 'center' },
           { header: 'ประเภท', key: 'type', width: 14 },
           { header: 'จำนวนซิม', key: 'count', width: 10, format: 'int' },
+          { header: 'ยอดเงิน (บาท)', key: 'amount', width: 14, format: 'baht' },
           { header: 'สถานะซิมทรู', key: 'sim_true_status', width: 18 },
         ],
         rows: details.map(r => ({ ...r, pkg: pkgLabel(r.pkg) })),
-        totals: { customer: `รวม ${details.length} รายการ`, count: detailTotal },
+        totals: { customer: `รวม ${details.length} รายการ`, count: detailTotal, amount: detailAmount },
       },
     ])
   }
@@ -247,6 +259,7 @@ export default function SimReport() {
                 <th className={th}>จำนวนจอง</th>
                 <th className={th}>ลูกค้า</th>
                 <th className={`${th} text-gray-700`}>รวมซิม</th>
+                <th className={`${th} text-emerald-600`}>ยอดเงิน</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -261,6 +274,7 @@ export default function SimReport() {
                   <td className={`${td} text-gray-500`}>{n0(y.bookings)}</td>
                   <td className={`${td} text-gray-500`}>{n0(y.customers)}</td>
                   <td className={`${td} font-bold text-gray-800`}>{n0(y.total)}</td>
+                  <td className={`${td} font-bold text-emerald-600`}>{baht(y.amount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -279,19 +293,21 @@ export default function SimReport() {
             {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-4">
           {[
             { label: `ซิมทั้งหมดปี ${year}`, value: yearSum.total, color: 'text-[#4338CA]' },
+            { label: `ยอดเงินปี ${year} (ตามราคาแพ็กเกจ)`, value: yearSum.amount, color: 'text-emerald-600', money: true },
             ...types.map(t => ({ label: t, value: yearSum.byType[t] || 0, color: 'text-purple-600' })),
             { label: 'จำนวนจองที่มีซิม', value: yearSum.bookings, color: 'text-gray-700' },
             { label: 'จำนวนลูกค้า', value: yearSum.customers, color: 'text-gray-700' },
           ].map((c, i) => (
             <div key={i} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
               <p className="text-xs text-gray-400">{c.label}</p>
-              <p className={`text-2xl font-bold mt-1 tabular-nums ${c.color}`}>{n0(c.value)}</p>
+              <p className={`text-2xl font-bold mt-1 tabular-nums ${c.color}`}>{'money' in c && c.money ? baht(c.value) : n0(c.value)}</p>
             </div>
           ))}
         </div>
+        {hasLegacy && <p className="text-[11px] text-amber-600 -mt-2 mb-4">* ซิมแพ็กเกจ &quot;ไม่ระบุ&quot; (ข้อมูลเก่า) ไม่มีราคา จึงไม่นับในยอดเงิน</p>}
 
         {/* รายเดือน */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm mb-4 overflow-x-auto">
@@ -305,6 +321,7 @@ export default function SimReport() {
                 <th className={th}>จำนวนจอง</th>
                 <th className={th}>ลูกค้า</th>
                 <th className={`${th} text-gray-700`}>รวมซิม</th>
+                <th className={`${th} text-emerald-600`}>ยอดเงิน</th>
                 <th className={`${th} w-40`}></th>
               </tr>
             </thead>
@@ -320,6 +337,7 @@ export default function SimReport() {
                     <td className={`${td} text-gray-500`}>{cell(m.bookings)}</td>
                     <td className={`${td} text-gray-500`}>{cell(m.customers)}</td>
                     <td className={`${td} font-bold text-gray-800`}>{cell(m.total)}</td>
+                    <td className={`${td} font-semibold text-emerald-600`}>{m.amount > 0 ? baht(m.amount) : <span className="text-gray-300">-</span>}</td>
                     <td className="px-3 py-2">
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full bg-purple-400 rounded-full" style={{ width: `${(m.total / maxMonth) * 100}%` }}/>
@@ -337,6 +355,7 @@ export default function SimReport() {
                 <td className={`${td} font-bold`}>{n0(yearSum.bookings)}</td>
                 <td className={`${td} font-bold`}>{n0(yearSum.customers)}</td>
                 <td className={`${td} font-bold`}>{n0(yearSum.total)}</td>
+                <td className={`${td} font-bold`}>{baht(yearSum.amount)}</td>
                 <td></td>
               </tr>
             </tfoot>
@@ -354,10 +373,11 @@ export default function SimReport() {
                     <th className={`${th} text-left`}>ลูกค้า</th>
                     <th className={th}>จอง</th>
                     <th className={`${th} text-gray-700`}>ซิม</th>
+                    <th className={`${th} text-emerald-600`}>ยอดเงิน</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {byCustomer.length === 0 && <tr><td colSpan={3} className="text-center text-xs text-gray-400 py-6">ไม่มีข้อมูล</td></tr>}
+                  {byCustomer.length === 0 && <tr><td colSpan={4} className="text-center text-xs text-gray-400 py-6">ไม่มีข้อมูล</td></tr>}
                   {byCustomer.map(c => (
                     <tr key={c.customer} onClick={() => setSearch(search === c.customer ? '' : c.customer)}
                       className={`cursor-pointer hover:bg-indigo-50/50 ${search === c.customer ? 'bg-indigo-50' : ''}`}>
@@ -367,6 +387,7 @@ export default function SimReport() {
                       </td>
                       <td className={`${td} text-gray-500`}>{c.bookingCount}</td>
                       <td className={`${td} font-bold text-gray-800`}>{n0(c.total)}</td>
+                      <td className={`${td} font-semibold text-emerald-600`}>{baht(c.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -377,7 +398,7 @@ export default function SimReport() {
           {/* รายละเอียด */}
           <div className="xl:col-span-2 bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-gray-700">รายละเอียด · {month ? `${MONTHS[month - 1]} ${year}` : `ทั้งปี ${year}`} <span className="text-xs font-normal text-gray-400">({details.length} รายการ · {n0(detailTotal)} ซิม)</span></p>
+              <p className="text-sm font-semibold text-gray-700">รายละเอียด · {month ? `${MONTHS[month - 1]} ${year}` : `ทั้งปี ${year}`} <span className="text-xs font-normal text-gray-400">({details.length} รายการ · {n0(detailTotal)} ซิม · {baht(detailAmount)})</span></p>
               <div className="relative">
                 <IconSearch size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / เลขจอง"
@@ -394,11 +415,12 @@ export default function SimReport() {
                     <th className={`${th} text-left`}>แพ็กเกจ</th>
                     <th className={`${th} text-left`}>ประเภท</th>
                     <th className={th}>จำนวน</th>
+                    <th className={`${th} text-emerald-600`}>ยอดเงิน</th>
                     <th className={`${th} text-left`}>สถานะซิมทรู</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {details.length === 0 && <tr><td colSpan={7} className="text-center text-xs text-gray-400 py-6">ไม่มีข้อมูล</td></tr>}
+                  {details.length === 0 && <tr><td colSpan={8} className="text-center text-xs text-gray-400 py-6">ไม่มีข้อมูล</td></tr>}
                   {details.map(r => (
                     <tr key={r.key} className="hover:bg-gray-50">
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{r.date}<p className="text-[11px] text-gray-400 font-mono">{r.case_number}</p></td>
@@ -407,6 +429,7 @@ export default function SimReport() {
                       <td className="px-3 py-2 text-xs"><span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md whitespace-nowrap">{pkgLabel(r.pkg)}</span></td>
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{r.type}</td>
                       <td className={`${td} font-semibold text-gray-800`}>{n0(r.count)}</td>
+                      <td className={`${td} text-emerald-600`}>{r.amount > 0 ? baht(r.amount) : <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-2 text-xs text-gray-500">{r.sim_true_status}</td>
                     </tr>
                   ))}
