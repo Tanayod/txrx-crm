@@ -23,6 +23,7 @@ export const PAGE_ROLES: any = {
   '/daily-report': ['admin', 'finance', 'doctor'], // เพิ่ม doctor ให้เข้ารายงานรายวันได้
   '/flight-check': ['admin', 'finance'],
   '/finance-report': ['admin', 'finance'],
+  '/sim-report': ['admin', 'finance'],
 }
 
 export function useAuth(currentPage: string) {

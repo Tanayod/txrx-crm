@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   IconLayoutDashboard, IconCalendar, IconUsers, IconStethoscope,
   IconMicroscope, IconCash, IconFileInvoice, IconFileReport,
-  IconBell, IconSettings, IconLogout, IconChartBar, IconPlaneArrival
+  IconBell, IconSettings, IconLogout, IconChartBar, IconPlaneArrival, IconDeviceSim
 } from '@tabler/icons-react'
 import { PAGE_ROLES } from './useAuth'
 
@@ -18,6 +18,7 @@ const navItems = [
   { href: '/payments', label: 'การเงิน', icon: IconCash },
   { href: '/invoices', label: 'ใบวางบิล', icon: IconFileInvoice },
   { href: '/finance-report', label: 'Report การเงิน', icon: IconChartBar },
+  { href: '/sim-report', label: 'รายงานซิม', icon: IconDeviceSim },
   { href: '/daily-report', label: 'รายงานรายวัน', icon: IconFileReport },
   { href: '/flight-check', label: 'เช็คไฟลท์บิน', icon: IconPlaneArrival },
   { href: '/notifications', label: 'แจ้งเตือน', icon: IconBell },
