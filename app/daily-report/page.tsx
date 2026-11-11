@@ -44,11 +44,14 @@ export default function DailyReport() {
 
   async function fetchReport() {
     setLoading(true)
-    const { data } = await supabase
+    let q = supabase
       .from('bookings')
       .select('*, customers(customer_name), medical_cases(actual_count, exam_date, doctor_note, cert_count, hold_count, cert_status, cert_deadline, parcel_sent), payments(payment_status, amount_received), special_exams(*, special_exam_items(*))')
       .gte('booking_date', dateFrom)
       .lte('booking_date', dateTo)
+    // งานลับ: ซ่อนจาก User แพทย์ทั้งรายการและยอดรวม (แอดมินยังเห็น)
+    if (role === 'doctor') q = q.eq('is_confidential', false)
+    const { data } = await q
       .order('booking_date', { ascending: true })
       .order('shift', { ascending: true })
 
@@ -381,6 +384,7 @@ export default function DailyReport() {
                     >
                       <span className="col-span-2 px-3 font-medium text-gray-800 text-xs flex items-center gap-1">
                         {b.customers?.customer_name}
+                        {b.is_confidential && <span className="ml-1 text-[10px] bg-gray-900 text-white px-1.5 py-0.5 rounded font-semibold" title="งานลับ — ทีมแพทย์ไม่เห็น">🔒 ลับ</span>}
                         {hasNote && <span title="มีหมายเหตุ" className="text-[11px]">📝</span>}
                       </span>
                       <span className="px-3 text-xs">

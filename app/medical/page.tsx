@@ -46,6 +46,8 @@ export default function Medical() {
         .order('booking_date', { ascending: false })
       if (df) q = q.gte('booking_date', df)
       if (dt) q = q.lte('booking_date', dt)
+      // งานลับ: ซ่อนจาก User แพทย์ (แอดมินยังเห็น)
+      if (role === 'doctor') q = q.eq('is_confidential', false)
       const { data } = await q.range(from, from + 999)
       if (!data || data.length === 0) break
       all = [...all, ...data]
@@ -408,6 +410,7 @@ export default function Medical() {
                   onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
                 >
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
+                  {b.is_confidential && <span className="ml-1 text-[10px] bg-gray-900 text-white px-1.5 py-0.5 rounded font-semibold" title="งานลับ — ทีมแพทย์ไม่เห็น">🔒 ลับ</span>}
                   <span className="col-span-2 font-medium text-gray-700 truncate flex items-center gap-1">
                     {b.customers?.customer_name}
                     {hasNote && <span title="มีหมายเหตุ" className="text-[11px]">📝</span>}

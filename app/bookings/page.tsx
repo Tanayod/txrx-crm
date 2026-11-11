@@ -26,7 +26,8 @@ const emptyForm = {
   // แต่ตั้งแต่ตอนนี้ความหมายของมันเปลี่ยนจาก "จำนวนมื้อต่อคน" เป็น "จำนวนกล่องข้าวทั้งหมด"
   // เพราะจำนวนกล่องข้าวไม่จำเป็นต้องเท่ากับจำนวนคนที่จองอีกต่อไป
   meal_price: 0, meal_count: 0,
-  admin_note: ''
+  admin_note: '',
+  is_confidential: false,
 }
 
 export default function Bookings() {
@@ -125,7 +126,8 @@ export default function Bookings() {
       special_exam_count: b.special_exam_count || spWorkers || 0,
       sim_true_status: b.sim_true_status || 'รอคำตอบลูกค้า',
       meal_price: b.meal_price || 0, meal_count: b.meal_count || 0,
-      admin_note: b.admin_note || ''
+      admin_note: b.admin_note || '',
+      is_confidential: !!b.is_confidential,
     })
     const { data: simData } = await supabase.from('sim_items').select('*').eq('booking_id', b.id)
     setSimItems(simData && simData.length > 0 ? simData : (b.sim_count > 0 ? [{ sim_package: b.sim_package || '200', sim_type: 'ซิมใหม่', sim_count: b.sim_count }] : []))
@@ -146,6 +148,7 @@ export default function Bookings() {
       sim_count: totalSimCount,
       meal_price: form.meal_price, meal_count: form.meal_count,
       admin_note: form.admin_note,
+      is_confidential: form.is_confidential,
     }
     let bookingId = editingId
     if (editingId) {
@@ -471,6 +474,7 @@ export default function Bookings() {
                   onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
                 >
                   <span className="text-xs text-gray-400 font-mono">{b.case_number}</span>
+                  {b.is_confidential && <span className="ml-1 text-[10px] bg-gray-900 text-white px-1.5 py-0.5 rounded font-semibold" title="งานลับ — ทีมแพทย์ไม่เห็น">🔒 ลับ</span>}
                   <span className="col-span-2 font-medium text-gray-800 text-xs">{b.customers?.customer_name}</span>
                   <span className="text-gray-500 text-xs">{b.booking_date}</span>
                   <span className="text-gray-500 text-xs truncate">{b.location_name || '-'}</span>
@@ -845,6 +849,16 @@ export default function Bookings() {
                 <textarea value={form.admin_note} onChange={(e) => setForm({...form, admin_note: e.target.value})} rows={2}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]"/>
               </div>
+
+              <label className={`flex items-start gap-2.5 cursor-pointer rounded-xl border p-3 ${form.is_confidential ? 'bg-gray-900 border-gray-900 text-white' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                <input type="checkbox" checked={form.is_confidential}
+                  onChange={(e) => setForm({...form, is_confidential: e.target.checked})}
+                  className="mt-0.5 rounded border-gray-300"/>
+                <span>
+                  <span className="text-sm font-semibold block">🔒 งานลับ (ซ่อนจากทีมแพทย์)</span>
+                  <span className={`text-xs ${form.is_confidential ? 'text-gray-300' : 'text-gray-400'}`}>User แพทย์จะไม่เห็นจองนี้ทุกหน้า รวมถึงไม่นับในยอดรวม — แอดมิน/การเงินยังเห็นปกติ</span>
+                </span>
+              </label>
             </div>
             <div className="p-6 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-sm text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">ยกเลิก</button>

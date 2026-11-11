@@ -57,9 +57,10 @@ export default function SpecialExams() {
   async function fetchExams() {
     const { data } = await supabase
       .from('special_exams')
-      .select('*, customers(customer_name), bookings(case_number, booking_date, location_name), special_exam_items(*)')
+      .select('*, customers(customer_name), bookings(case_number, booking_date, location_name, is_confidential), special_exam_items(*)')
       .order('exam_date', { ascending: false })
-    if (data) setExams(data)
+    // งานลับ: ตรวจพิเศษที่ผูกกับจองลับ ซ่อนจาก User แพทย์ (แอดมินยังเห็น)
+    if (data) setExams(role === 'doctor' ? data.filter((e: any) => !e.bookings?.is_confidential) : data)
   }
 
   async function fetchExamTypes() {
@@ -84,7 +85,7 @@ export default function SpecialExams() {
     while (true) {
       const { data: chunk } = await supabase
         .from('bookings')
-        .select('id, case_number, booking_date, location_name, shift')
+        .select('id, case_number, booking_date, location_name, shift, is_confidential')
         .eq('customer_id', customerId)
         .order('booking_date', { ascending: false })
         .range(from, from + 999)
@@ -93,7 +94,7 @@ export default function SpecialExams() {
       if (chunk.length < 1000) break
       from += 1000
     }
-    setCustomerBookings(all)
+    setCustomerBookings(role === 'doctor' ? all.filter(b => !b.is_confidential) : all)
   }
 
   const openCreate = () => {
