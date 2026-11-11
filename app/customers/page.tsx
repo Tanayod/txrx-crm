@@ -24,7 +24,7 @@ export default function Customers() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, due_type: 'standard_3', note: '' })
+  const [form, setForm] = useState({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, due_type: 'standard_3', note: '', price_per_worker: '', extra_note: '' })
 
   const [showDebtModal, setShowDebtModal] = useState(false)
   const [debtCustomer, setDebtCustomer] = useState<any>(null)
@@ -59,23 +59,24 @@ export default function Customers() {
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, due_type: 'standard_3', note: '' })
+    setForm({ line_name: '', customer_name: '', phone: '', type: 'general', credit_limit: 0, opening_balance: 0, due_type: 'standard_3', note: '', price_per_worker: '', extra_note: '' })
     setShowModal(true)
   }
 
   const openEdit = (c: any) => {
     setEditingId(c.id)
-    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, opening_balance: c.opening_balance || 0, due_type: c.due_type || 'standard_3', note: c.note || '' })
+    setForm({ line_name: c.line_name || '', customer_name: c.customer_name, phone: c.phone || '', type: c.type, credit_limit: c.credit_limit || 0, opening_balance: c.opening_balance || 0, due_type: c.due_type || 'standard_3', note: c.note || '', price_per_worker: c.price_per_worker != null ? String(c.price_per_worker) : '', extra_note: c.extra_note || '' })
     setShowModal(true)
   }
 
   const handleSave = async () => {
     if (!form.customer_name) return alert('กรุณากรอกชื่อลูกค้า')
-    if (editingId) {
-      await supabase.from('customers').update(form).eq('id', editingId)
-    } else {
-      await supabase.from('customers').insert([form])
-    }
+    // ราคา/คน เก็บเป็นตัวเลข (ว่าง = ไม่ระบุ)
+    const payload = { ...form, price_per_worker: form.price_per_worker === '' ? null : Number(form.price_per_worker) }
+    const { error } = editingId
+      ? await supabase.from('customers').update(payload).eq('id', editingId)
+      : await supabase.from('customers').insert([payload])
+    if (error) return alert(`บันทึกลูกค้าไม่สำเร็จ: ${error.message}`)
     fetchCustomers(); setShowModal(false)
   }
 
@@ -128,7 +129,9 @@ export default function Customers() {
       'ประเภท': c.type === 'credit' ? 'เครดิต' : 'ทั่วไป',
       'วงเงินเครดิต': c.credit_limit || 0,
       'ยอดยกมา': c.opening_balance || 0,
+      'ราคา/คน': c.price_per_worker ?? '',
       'หมายเหตุ': c.note || '',
+      'หมายเหตุเพิ่มเติม': c.extra_note || '',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -187,15 +190,15 @@ export default function Customers() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-8 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+          <div className="grid grid-cols-9 gap-2 px-5 py-2.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
             <span>รหัส</span><span>ชื่อลูกค้า</span><span>ชื่อ LINE</span>
-            <span>เบอร์โทร</span><span>ประเภท</span><span>ยอดยกมา</span><span>หมายเหตุ</span><span></span>
+            <span>เบอร์โทร</span><span>ประเภท</span><span>ยอดยกมา</span><span>ราคา/คน</span><span>หมายเหตุ</span><span></span>
           </div>
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">ไม่พบข้อมูลลูกค้า</div>
           ) : (
             filtered.map((c) => (
-              <div key={c.id} className={`grid grid-cols-8 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center ${c.is_active === false ? 'opacity-50' : ''}`}>
+              <div key={c.id} className={`grid grid-cols-9 gap-2 px-5 py-3 border-b border-gray-50 text-sm hover:bg-gray-50 items-center ${c.is_active === false ? 'opacity-50' : ''}`}>
                 <span className="text-gray-400 text-xs">CUS-{String(c.customer_code).padStart(3,'0')}</span>
                 <span className="font-medium text-gray-700 flex items-center gap-1.5">
                   {c.customer_name}
@@ -217,7 +220,11 @@ export default function Customers() {
                     </button>
                   )}
                 </span>
-                <span className="text-gray-400 text-xs">{c.note || '-'}</span>
+                <span className="text-gray-700 text-xs">{c.price_per_worker != null ? `฿${Number(c.price_per_worker).toLocaleString()}` : <span className="text-gray-300">-</span>}</span>
+                <span className="text-gray-400 text-xs">
+                  {c.note || (c.extra_note ? '' : '-')}
+                  {c.extra_note && <span className="block text-gray-500 whitespace-pre-line line-clamp-2" title={c.extra_note}>{c.extra_note}</span>}
+                </span>
                 <span className="flex gap-2 justify-end">
                   {c.is_active === false ? (
                     <button onClick={() => handleRestore(c.id)} className="text-xs text-emerald-600 hover:underline font-medium">เปิดใช้งานคืน</button>
@@ -290,9 +297,27 @@ export default function Customers() {
                 <p className="text-xs text-red-400 mt-1">ใส่ยอดหนี้เดิมที่ลูกค้าค้างอยู่ก่อนเริ่มใช้ระบบนี้ (ถ้ามี)</p>
               </div>
               <div>
+                <label className="text-xs text-gray-500 mb-1 block">ราคา/คน (บาท)</label>
+                <input type="text" inputMode="decimal" value={form.price_per_worker}
+                  onChange={(e) => {
+                    let v = e.target.value.replace(/[^\d.]/g, '')
+                    const dot = v.indexOf('.')
+                    if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '')
+                    setForm({...form, price_per_worker: v})
+                  }}
+                  placeholder="เช่น 250"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]" />
+              </div>
+              <div>
                 <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>
                 <input value={form.note} onChange={(e) => setForm({...form, note: e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA]" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">หมายเหตุเพิ่มเติม</label>
+                <textarea value={form.extra_note} onChange={(e) => setForm({...form, extra_note: e.target.value})}
+                  rows={3}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4338CA] resize-y" />
               </div>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
